@@ -6,6 +6,10 @@ const migrationPath = fileURLToPath(
   new URL("../supabase/migrations/202609100001_initial_schema.sql", import.meta.url),
 );
 const migration = readFileSync(migrationPath, "utf8").toLowerCase();
+const databaseTypes = readFileSync(
+  fileURLToPath(new URL("../lib/supabase/database.types.ts", import.meta.url)),
+  "utf8",
+).toLowerCase();
 
 const tables = [
   "profiles",
@@ -27,6 +31,10 @@ describe("initial database migration", () => {
   it.each(tables)("creates and enables RLS on %s", (table) => {
     expect(migration).toContain(`create table public.${table}`);
     expect(migration).toContain(`alter table public.${table} enable row level security`);
+  });
+
+  it.each(tables)("exposes %s through the Supabase Database type", (table) => {
+    expect(databaseTypes).toContain(`${table}: table<`);
   });
 
   it("keeps profile provisioning server-only", () => {

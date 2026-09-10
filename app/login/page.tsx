@@ -11,7 +11,6 @@ import { createClient } from "@/lib/supabase/server";
 const errorMessages: Record<string, string> = {
   "not-allowed": "This feed is private. Use the email configured for this installation.",
   configuration: "Authentication is not configured yet. Check the local setup values.",
-  "send-failed": "The sign-in link could not be sent. Confirm the user exists in Supabase Auth.",
   callback: "That sign-in link is invalid or has expired. Request a fresh link.",
 };
 
@@ -22,7 +21,7 @@ interface LoginPageProps {
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const parameters = await searchParams;
   const errorKey = typeof parameters.error === "string" ? parameters.error : "";
-  const sentTo = typeof parameters.sent === "string" ? parameters.sent : "";
+  const wasSent = parameters.sent === "1";
 
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
@@ -49,12 +48,12 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           Sign in with the one email allowed for this private feed. We’ll send a secure link—no password needed.
         </p>
 
-        {sentTo ? (
+        {wasSent ? (
           <div className="mt-8 rounded-2xl border border-emerald-200 bg-[var(--success-soft)] p-4 text-sm leading-6 text-[var(--success)]">
             <div className="flex items-start gap-3">
               <CheckCircle2 className="mt-0.5 shrink-0" aria-hidden="true" size={18} />
               <p>
-                Check <strong>{sentTo}</strong> for your sign-in link. You can close this tab after opening it.
+                If that address is authorized, a sign-in link is on its way. You can close this tab after opening it.
               </p>
             </div>
           </div>

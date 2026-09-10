@@ -83,6 +83,8 @@ npm run build
 
 The Vitest suite checks the email allowlist and safe callback paths, confirms every initial table enables RLS, verifies that browser sessions cannot provision profiles, and validates the core ownership, deduplication, and digest-idempotency contracts. `npx supabase db reset` additionally validates the SQL against a live local PostgreSQL instance.
 
+Pull requests also run a PostgreSQL 17 integration job in GitHub Actions. It applies the migration to a clean database and verifies anonymous, unprovisioned authenticated, owner, and service-role RLS behavior with `tests/database/rls.sql`.
+
 ## Production configuration
 
 Create a Supabase project, apply the migration with the Supabase CLI, create only the allowed Auth user, and keep public email signups disabled. Configure the values from `.env.example` in Vercel, including an HTTPS `APP_URL`, and add `${APP_URL}/auth/callback` to the Supabase Auth redirect allowlist.
