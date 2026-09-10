@@ -13,6 +13,8 @@ out/
 # Test and build output
 coverage/
 dist/
+build/
+supabase/.temp/
 
 # Vercel
 .vercel/
@@ -29,3 +31,7 @@ pnpm-debug.log*
 Thumbs.db
 .idea/
 .vscode/
+
+# TypeScript and local certificates
+*.tsbuildinfo
+*.pem
