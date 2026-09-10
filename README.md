@@ -1,39 +1,90 @@
 # Personal Feed
 
-Personal Feed is a single-user AI information filter designed to surface a small number of important, relevant, and discoverable items without infinite-scroll mechanics.
+Personal Feed is a private, single-user information filter built to surface a small number of worthwhile stories without infinite scroll. This first vertical slice includes the application foundation, Supabase authentication and schema, Row Level Security, a responsive seeded feed, and focused access-contract tests.
 
-## Project Status
+External collectors, the OpenAI ranking pipeline, persistent feed actions, digests, and LINE notifications are deliberately deferred to later slices.
 
-The repository is currently at the specification stage. Implementation has not started.
+## Stack
 
-## Start Here
+- Next.js 16, TypeScript, and App Router
+- Tailwind CSS 4 with a shadcn/ui-compatible component structure
+- Supabase PostgreSQL, Auth, and SSR clients
+- Vitest for authorization and migration-contract tests
+- Vercel as the target deployment platform
 
-Read these documents in order:
+## Prerequisites
 
-1. [PRODUCT.md](./PRODUCT.md) — product goals, behavior, scope, and success criteria
-2. [ARCHITECTURE.md](./ARCHITECTURE.md) — stack, data model, integrations, scheduling, and build order
-3. [AGENTS.md](./AGENTS.md) — implementation constraints and the first Codex task
+- Node.js 20.9 or newer (Node.js 24 is used for repository verification)
+- npm 10 or newer
+- Docker Desktop, if you want to run Supabase locally
 
-## Planned Stack
+## Local setup
 
-- Next.js, TypeScript, App Router
-- Tailwind CSS and shadcn/ui
-- Supabase PostgreSQL and Supabase Auth
-- OpenAI Responses API
-- Vercel and Vercel Cron
-- LINE Messaging API
+1. Install dependencies.
 
-## MVP Principles
+   ```powershell
+   npm install
+   ```
 
-- Less, but better
-- No infinite scroll
-- Original sources always remain accessible
-- AI filters and explains; it does not invent facts
-- Discovery matters alongside current events
-- Explicit feedback improves future ranking
+2. Start the local Supabase services. The Supabase CLI can be run through `npx`; its first use may download the CLI.
 
-## First Milestone
+   ```powershell
+   npx supabase start
+   ```
 
-The first implementation milestone is a runnable vertical slice with project foundation, migrations, single-user authentication, a seeded Feed UI, and initial tests. External collectors and the full AI pipeline come afterward.
+   The command applies `supabase/migrations/202609100001_initial_schema.sql`. To reapply the migration from a clean local database later, run:
 
-See the **First Codex Task** section in [AGENTS.md](./AGENTS.md) for the exact task brief.
+   ```powershell
+   npx supabase db reset
+   ```
+
+3. Copy the environment template.
+
+   ```powershell
+   Copy-Item .env.example .env.local
+   ```
+
+4. Get the local API keys.
+
+   ```powershell
+   npx supabase status -o env
+   ```
+
+   Put `API_URL`, `ANON_KEY`, and `SERVICE_ROLE_KEY` into the corresponding `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` entries in `.env.local`. Keep `APP_URL=http://localhost:3000`, and set `ALLOWED_EMAIL` to the single address that may sign in.
+
+5. Create that one user in Supabase Studio at [http://127.0.0.1:54323](http://127.0.0.1:54323) under **Authentication → Users**. Use the same address as `ALLOWED_EMAIL`. Public user creation is disabled, and the app requests Magic Links with `shouldCreateUser: false`.
+
+6. Start the web app.
+
+   ```powershell
+   npm run dev
+   ```
+
+   Open [http://localhost:3000](http://localhost:3000), request a Magic Link, then read the local email in Inbucket at [http://127.0.0.1:54324](http://127.0.0.1:54324).
+
+The callback provisions a `profiles` row through the server-only service-role client only after the authenticated email matches `ALLOWED_EMAIL`. RLS then uses that provisioned profile as the gate for all application data. Never expose `SUPABASE_SERVICE_ROLE_KEY` to browser code or commit `.env.local`.
+
+## Verification
+
+Run the full repository check:
+
+```powershell
+npm run verify
+```
+
+Or run each check independently:
+
+```powershell
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```
+
+The Vitest suite checks the email allowlist and safe callback paths, confirms every initial table enables RLS, verifies that browser sessions cannot provision profiles, and validates the core ownership, deduplication, and digest-idempotency contracts. `npx supabase db reset` additionally validates the SQL against a live local PostgreSQL instance.
+
+## Production configuration
+
+Create a Supabase project, apply the migration with the Supabase CLI, create only the allowed Auth user, and keep public email signups disabled. Configure the values from `.env.example` in Vercel, including an HTTPS `APP_URL`, and add `${APP_URL}/auth/callback` to the Supabase Auth redirect allowlist.
+
+The OpenAI, source, LINE, and cron variables remain placeholders for later implementation phases. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md), [PRODUCT.md](./PRODUCT.md), and [ARCHITECTURE.md](./ARCHITECTURE.md) for the intended sequence and constraints.
