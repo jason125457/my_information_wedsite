@@ -143,6 +143,8 @@ Structured output 最低欄位：
 
 不同 topic 使用不同 weighting profile，且不要求每個 topic 每天都出現。
 
+第一版先使用可重現的 deterministic ranking：六項 AI 訊號依 topic profile 做加權平均，Topic Weight 轉為 `0.8～1.2` 倍率，再套用有上下限的 rule-based feedback adjustment，最後分數限制在 `0～100`。此公式集中在單一 ranking module，未來可依實際使用資料調整。
+
 ### Feedback Adjustment
 
 MVP 使用 rule-based feedback 加 LLM ranking。Save 增加相似內容權重；Not Interested 依 topic、content type、technical depth、source style 與 keywords 調整。不建立客製 ML recommender。
@@ -150,6 +152,8 @@ MVP 使用 rule-based feedback 加 LLM ranking。Save 增加相似內容權重�
 ## 8. Event Deduplication
 
 第一層使用 canonical URL、external ID 與 normalized title similarity。第二層只將模糊候選交給 reasoning model 判斷是否為同一事件。
+
+第一層 title similarity 同時比較斷詞集合與 Unicode 字元 bigram，以涵蓋英文及中日文標題。只有落在模糊區間的候選使用 reasoning model，明確相同或明確不同者不產生 AI 成本。
 
 相同事件建立一個 Story，透過 `story_sources` 關聯多個來源。主來源優先順序：Official → Original Reporting → Major Media → Community。提供明顯不同分析或新資訊的內容可獨立成 Story。
 
