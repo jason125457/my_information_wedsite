@@ -9,6 +9,7 @@ interface FeedPageProps {
   view?: FeedView;
   eyebrow?: string;
   heading?: string;
+  canPersonalize?: boolean;
 }
 
 export function FeedPage(props: FeedPageProps) {
@@ -21,6 +22,7 @@ export function FeedPage(props: FeedPageProps) {
           view={props.view}
           eyebrow={props.eyebrow}
           heading={props.heading}
+          canPersonalize={props.canPersonalize ?? Boolean(props.email)}
         />
         <footer className="mt-9 flex items-center justify-between border-t border-[var(--line)] py-6 text-sm text-[var(--muted)]">
           <p>No infinite scroll. You’ve reached the end.</p>

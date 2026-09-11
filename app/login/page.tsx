@@ -9,7 +9,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 
 const errorMessages: Record<string, string> = {
-  "not-allowed": "This feed is private. Use the email configured for this installation.",
+  "not-allowed": "Use the email configured for personal Feed actions.",
   configuration: "Authentication is not configured yet. Check the local setup values.",
   callback: "That sign-in link is invalid or has expired. Request a fresh link.",
 };
@@ -45,7 +45,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           Your quieter corner of the internet.
         </h1>
         <p className="mt-4 text-base leading-7 text-[var(--muted)]">
-          Sign in with the one email allowed for this private feed. We’ll send a secure link—no password needed.
+          Browsing is public. Sign in with the one allowed email to save stories, build a reading queue, and leave feedback. We’ll send a secure link—no password needed.
         </p>
 
         {wasSent ? (

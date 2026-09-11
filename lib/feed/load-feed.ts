@@ -18,7 +18,7 @@ const validTopics = new Set<TopicSlug>([
 
 export async function loadFeed(
   supabase: SupabaseClient,
-  profileId: string,
+  profileId: string | null,
   view: FeedView = "all",
 ): Promise<FeedStory[]> {
   const { data: storyRows, error: storyError } = await supabase
@@ -34,7 +34,9 @@ export async function loadFeed(
   const topicIds = [...new Set(storyRows.map((story) => story.primary_topic_id))];
   const [topicResult, stateResult, sourceLinkResult] = await Promise.all([
     supabase.from("topics").select("id,slug,name").in("id", topicIds),
-    supabase.from("story_state").select("story_id,is_read,is_saved,is_read_later,is_not_interested").eq("profile_id", profileId).in("story_id", storyIds),
+    profileId
+      ? supabase.from("story_state").select("story_id,is_read,is_saved,is_read_later,is_not_interested").eq("profile_id", profileId).in("story_id", storyIds)
+      : Promise.resolve({ data: [], error: null }),
     supabase.from("story_sources").select("story_id,raw_item_id,is_primary").in("story_id", storyIds),
   ]);
 

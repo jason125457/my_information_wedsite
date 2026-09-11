@@ -20,3 +20,15 @@ export async function requireAuthenticatedUser() {
 
   return { supabase, user: data.user };
 }
+
+export async function getOptionalAuthenticatedUser() {
+  if (!isSupabaseConfigured()) redirect("/login?error=configuration");
+
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) return { supabase, user: null };
+  if (isAllowedEmail(data.user.email)) return { supabase, user: data.user };
+
+  await supabase.auth.signOut();
+  return { supabase, user: null };
+}

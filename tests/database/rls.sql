@@ -89,9 +89,27 @@ begin;
 set local role anon;
 do $$
 begin
-  if (select count(*) from public.topics) <> 0 then
-    raise exception 'anonymous users must not read feed data';
+  if (select count(*) from public.topics) <> 7 then
+    raise exception 'anonymous users must be able to read public topics';
   end if;
+  if (select count(*) from public.stories) <> 4 then
+    raise exception 'anonymous users must be able to read public stories';
+  end if;
+  if (select count(*) from public.story_state) <> 0 then
+    raise exception 'anonymous users must not read personal story state';
+  end if;
+
+  begin
+    insert into public.story_state (profile_id, story_id, is_saved)
+    values (
+      '20000000-0000-4000-8000-000000000001',
+      '40000000-0000-4000-8000-000000000002',
+      true
+    );
+    raise exception 'anonymous users unexpectedly wrote personal story state';
+  exception
+    when insufficient_privilege then null;
+  end;
 end;
 $$;
 rollback;

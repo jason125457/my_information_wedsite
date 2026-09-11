@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LogOut, Sparkles } from "lucide-react";
+import { LogIn, LogOut, Sparkles } from "lucide-react";
 
 import { signOut } from "@/app/login/actions";
 import { Button } from "@/components/ui/button";
@@ -42,12 +42,19 @@ export function AppHeader({ email }: { email?: string }) {
           {email ? (
             <span className="hidden max-w-40 truncate text-sm text-[var(--muted)] lg:block">{email}</span>
           ) : null}
-          <form action={signOut}>
-            <Button type="submit" variant="ghost" size="sm" aria-label="Sign out">
-              <LogOut aria-hidden="true" size={16} />
-              <span className="hidden lg:inline">Sign out</span>
-            </Button>
-          </form>
+          {email ? (
+            <form action={signOut}>
+              <Button type="submit" variant="ghost" size="sm" aria-label="Sign out">
+                <LogOut aria-hidden="true" size={16} />
+                <span className="hidden lg:inline">Sign out</span>
+              </Button>
+            </form>
+          ) : (
+            <Link href="/login" className="inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-[var(--ink-soft)] hover:bg-white">
+              <LogIn aria-hidden="true" size={16} />
+              Sign in
+            </Link>
+          )}
         </div>
       </div>
     </header>

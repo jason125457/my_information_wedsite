@@ -22,6 +22,7 @@ interface FeedListProps {
   view?: "all" | "saved" | "read-later" | "history";
   eyebrow?: string;
   heading?: string;
+  canPersonalize?: boolean;
 }
 
 export function FeedList({
@@ -29,6 +30,7 @@ export function FeedList({
   view = "all",
   eyebrow = "For You",
   heading = "Worth your attention",
+  canPersonalize = false,
 }: FeedListProps) {
   const [selectedTopic, setSelectedTopic] = useState<TopicSlug>("all");
   const [stories, setStories] = useState(initialStories);
@@ -181,7 +183,8 @@ export function FeedList({
               story={story}
               feedbackOpen={feedbackStoryId === story.id}
               isPending={pendingIds.has(story.id)}
-              onRead={() => void persist(story.id, (item) => ({ ...item, isRead: true }), () => markStoryRead(story.id))}
+              canPersonalize={canPersonalize}
+              onRead={() => canPersonalize ? void persist(story.id, (item) => ({ ...item, isRead: true }), () => markStoryRead(story.id)) : undefined}
               onToggleSaved={() => void persist(story.id, (item) => ({ ...item, isSaved: !item.isSaved }), () => setStorySaved(story.id, !story.isSaved))}
               onToggleReadLater={() => void persist(story.id, (item) => ({ ...item, isReadLater: !item.isReadLater }), () => setStoryReadLater(story.id, !story.isReadLater))}
               onToggleFeedback={() =>

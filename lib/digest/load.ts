@@ -41,7 +41,7 @@ export async function loadDailyDigests(supabase: SupabaseClient): Promise<Digest
 
 export async function loadDailyDigestStories(
   supabase: SupabaseClient,
-  profileId: string,
+  profileId: string | null,
   date: string,
 ) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;

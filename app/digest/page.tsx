@@ -2,18 +2,18 @@ import Link from "next/link";
 import { CalendarDays } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
-import { requireAuthenticatedUser } from "@/lib/auth/require-user";
+import { getOptionalAuthenticatedUser } from "@/lib/auth/require-user";
 import { loadDailyDigests } from "@/lib/digest/load";
 
 export const dynamic = "force-dynamic";
 
 export default async function DigestPage() {
-  const { supabase, user } = await requireAuthenticatedUser();
+  const { supabase, user } = await getOptionalAuthenticatedUser();
   const digests = await loadDailyDigests(supabase);
 
   return (
     <>
-      <AppHeader email={user.email} />
+      <AppHeader email={user?.email} />
       <main className="mx-auto max-w-5xl px-5 py-10 sm:px-8 sm:py-14">
         <p className="text-sm font-semibold text-[var(--accent)]">Daily Digest</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">A finite daily briefing</h1>
