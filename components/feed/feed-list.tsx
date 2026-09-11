@@ -7,25 +7,49 @@ import { flushSync } from "react-dom";
 import { FeedCard } from "@/components/feed/feed-card";
 import { Button } from "@/components/ui/button";
 import {
-  mockStories,
-  topicFilters,
-  type TopicSlug,
-} from "@/lib/feed/mock-stories";
+  markStoryNotInterested,
+  markStoryRead,
+  setStoryReadLater,
+  setStorySaved,
+  type StoryActionResult,
+} from "@/app/actions/story-state";
+import type { FeedbackReason } from "@/lib/feed/state";
+import { topicFilters, type FeedStory, type TopicSlug } from "@/lib/feed/types";
 import { cn } from "@/lib/utils";
 
-export function FeedList() {
+interface FeedListProps {
+  initialStories: FeedStory[];
+  view?: "all" | "saved" | "read-later" | "history";
+  eyebrow?: string;
+  heading?: string;
+}
+
+export function FeedList({
+  initialStories,
+  view = "all",
+  eyebrow = "For You",
+  heading = "Worth your attention",
+}: FeedListProps) {
   const [selectedTopic, setSelectedTopic] = useState<TopicSlug>("all");
-  const [stories, setStories] = useState(mockStories);
-  const [savedIds, setSavedIds] = useState<Set<string>>(() => new Set());
-  const [readLaterIds, setReadLaterIds] = useState<Set<string>>(() => new Set());
+  const [stories, setStories] = useState(initialStories);
   const [feedbackStoryId, setFeedbackStoryId] = useState<string | null>(null);
+  const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const visibleStories = useMemo(
-    () =>
-      selectedTopic === "all"
-        ? stories
-        : stories.filter((story) => story.topic === selectedTopic),
-    [selectedTopic, stories],
+    () => {
+      const inView = stories.filter((story) => {
+        if (story.isNotInterested) return false;
+        if (view === "saved") return story.isSaved;
+        if (view === "read-later") return story.isReadLater;
+        if (view === "history") return story.isRead;
+        return true;
+      });
+      return selectedTopic === "all"
+        ? inView
+        : inView.filter((story) => story.topic === selectedTopic);
+    },
+    [selectedTopic, stories, view],
   );
 
   useEffect(() => {
@@ -82,34 +106,48 @@ export function FeedList() {
     return () => lifecycle.abort();
   }, [stories]);
 
-  function toggleId(setter: typeof setSavedIds, id: string) {
-    setter((current) => {
+  async function persist(
+    id: string,
+    update: (story: FeedStory) => FeedStory,
+    action: () => Promise<StoryActionResult>,
+  ) {
+    const previous = stories.find((story) => story.id === id);
+    if (!previous || pendingIds.has(id)) return;
+    setErrorMessage(null);
+    setPendingIds((current) => new Set(current).add(id));
+    setStories((current) => current.map((story) => (story.id === id ? update(story) : story)));
+
+    const result = await action().catch(() => ({ ok: false, message: "Could not save this change." }));
+    if (!result.ok) {
+      setStories((current) => current.map((story) => (story.id === id ? previous : story)));
+      setErrorMessage(result.message ?? "Could not save this change.");
+    }
+    setPendingIds((current) => {
       const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      next.delete(id);
       return next;
     });
-  }
-
-  function markRead(id: string) {
-    setStories((current) =>
-      current.map((story) => (story.id === id ? { ...story, isRead: true } : story)),
-    );
   }
 
   return (
     <section aria-labelledby="feed-heading">
       <div className="mb-6 flex items-end justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-[var(--accent)]">Sample feed</p>
+          <p className="text-sm font-semibold text-[var(--accent)]">{eyebrow}</p>
           <h1 id="feed-heading" className="mt-1 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
-            Worth your attention
+            {heading}
           </h1>
         </div>
         <p className="hidden text-sm text-[var(--muted)] sm:block">
-          {stories.length} source-verified examples
+          {visibleStories.length} worthwhile items
         </p>
       </div>
+
+      {errorMessage ? (
+        <p role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {errorMessage}
+        </p>
+      ) : null}
 
       <div
         className="-mx-5 mb-7 flex gap-2 overflow-x-auto px-5 pb-2 sm:mx-0 sm:px-0"
@@ -141,18 +179,17 @@ export function FeedList() {
             <FeedCard
               key={story.id}
               story={story}
-              isSaved={savedIds.has(story.id)}
-              isReadLater={readLaterIds.has(story.id)}
               feedbackOpen={feedbackStoryId === story.id}
-              onRead={() => markRead(story.id)}
-              onToggleSaved={() => toggleId(setSavedIds, story.id)}
-              onToggleReadLater={() => toggleId(setReadLaterIds, story.id)}
+              isPending={pendingIds.has(story.id)}
+              onRead={() => void persist(story.id, (item) => ({ ...item, isRead: true }), () => markStoryRead(story.id))}
+              onToggleSaved={() => void persist(story.id, (item) => ({ ...item, isSaved: !item.isSaved }), () => setStorySaved(story.id, !story.isSaved))}
+              onToggleReadLater={() => void persist(story.id, (item) => ({ ...item, isReadLater: !item.isReadLater }), () => setStoryReadLater(story.id, !story.isReadLater))}
               onToggleFeedback={() =>
                 setFeedbackStoryId((current) => (current === story.id ? null : story.id))
               }
-              onDismiss={() => {
-                setStories((current) => current.filter((item) => item.id !== story.id));
+              onDismiss={(reason: FeedbackReason) => {
                 setFeedbackStoryId(null);
+                void persist(story.id, (item) => ({ ...item, isNotInterested: true }), () => markStoryNotInterested(story.id, reason));
               }}
             />
           ))}

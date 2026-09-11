@@ -45,6 +45,9 @@ jobs:
       - name: Bootstrap Supabase-compatible roles
         run: psql --file tests/database/bootstrap.sql
       - name: Apply migrations
-        run: psql --file supabase/migrations/202609100001_initial_schema.sql
+        run: |
+          for migration in supabase/migrations/*.sql; do
+            psql --file "$migration"
+          done
       - name: Verify RLS behavior
         run: psql --file tests/database/rls.sql

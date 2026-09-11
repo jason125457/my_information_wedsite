@@ -27,7 +27,31 @@ values (
   '10000000-0000-4000-8000-000000000001',
   5
 );
-rollback;
+
+insert into public.story_state (profile_id, story_id, is_saved, saved_at)
+values (
+  '20000000-0000-4000-8000-000000000001',
+  '40000000-0000-4000-8000-000000000001',
+  true,
+  now()
+);
+
+do $$
+begin
+  if (select count(*) from public.stories) <> 4 then
+    raise exception 'the provisioned owner must be able to read seeded stories';
+  end if;
+  if not exists (
+    select 1 from public.story_state
+    where profile_id = '20000000-0000-4000-8000-000000000001'
+      and story_id = '40000000-0000-4000-8000-000000000001'
+      and is_saved
+  ) then
+    raise exception 'the owner must be able to persist story state';
+  end if;
+end;
+$$;
+commit;
 
 begin;
 set local role authenticated;
@@ -41,6 +65,9 @@ begin
   end if;
   if (select count(*) from public.topics) <> 0 then
     raise exception 'an unprovisioned user must not read global feed data';
+  end if;
+  if (select count(*) from public.story_state) <> 0 then
+    raise exception 'an unprovisioned user must not read owner story state';
   end if;
 
   begin
@@ -75,6 +102,9 @@ do $$
 begin
   if (select count(*) from public.topics) <> 7 then
     raise exception 'service_role must retain ingestion access';
+  end if;
+  if (select count(*) from public.stories) <> 4 then
+    raise exception 'all migrations must run before database verification';
   end if;
 end;
 $$;
