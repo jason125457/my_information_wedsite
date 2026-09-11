@@ -26,8 +26,12 @@ port = 54324
 
 [auth]
 enabled = true
-site_url = "http://localhost:3000"
-additional_redirect_urls = ["http://127.0.0.1:3000/auth/callback", "http://localhost:3000/auth/callback"]
+site_url = "https://my-information-wedsite.vercel.app"
+additional_redirect_urls = [
+  "http://127.0.0.1:3000/auth/callback",
+  "http://localhost:3000/auth/callback",
+  "https://my-information-wedsite.vercel.app/auth/callback",
+]
 jwt_expiry = 3600
 enable_signup = false
 enable_anonymous_sign_ins = false
