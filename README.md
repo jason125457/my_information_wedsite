@@ -1,14 +1,15 @@
 # Personal Feed
 
-Personal Feed is a private, single-user information filter built to surface a small number of worthwhile stories without infinite scroll. This first vertical slice includes the application foundation, Supabase authentication and schema, Row Level Security, a responsive seeded feed, and focused access-contract tests.
+Personal Feed is a single-user information filter built to surface a small number of worthwhile stories without infinite scroll. The repository now includes the application foundation, Supabase authentication and schema, Row Level Security, a responsive seeded feed, and the source-collector foundation.
 
-External collectors, the OpenAI ranking pipeline, persistent feed actions, digests, and LINE notifications are deliberately deferred to later slices.
+The OpenAI ranking pipeline, collector persistence, persistent feed actions, digests, and LINE notifications are deliberately deferred to later slices.
 
 ## Stack
 
 - Next.js 16, TypeScript, and App Router
 - Tailwind CSS 4 with a shadcn/ui-compatible component structure
 - Supabase PostgreSQL, Auth, and SSR clients
+- Official/API-first RSS, Hacker News, Reddit OAuth, and YouTube collectors
 - Vitest for authorization and migration-contract tests
 - Vercel as the target deployment platform
 
@@ -89,4 +90,8 @@ Pull requests also run a PostgreSQL 17 integration job in GitHub Actions. It app
 
 Create a Supabase project, apply the migration with the Supabase CLI, create only the allowed Auth user, and keep public email signups disabled. Configure the values from `.env.example` in Vercel, including an HTTPS `APP_URL`, and add `${APP_URL}/auth/callback` to the Supabase Auth redirect allowlist.
 
-The OpenAI, source, LINE, and cron variables remain placeholders for later implementation phases. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md), [PRODUCT.md](./PRODUCT.md), and [ARCHITECTURE.md](./ARCHITECTURE.md) for the intended sequence and constraints.
+Reddit collection requires an approved official API application and the three `REDDIT_*` values in `.env.local`. YouTube collection requires `YOUTUBE_API_KEY`. RSS and Hacker News do not require credentials. Collector requests are server-side only; never expose API credentials in browser code.
+
+Collectors share a common contract under `lib/collectors/`, return normalized candidates, and accept an injectable fetch implementation for deterministic tests. A failed source is isolated from the remaining collection run. This phase intentionally does not write candidates to the database yet.
+
+The OpenAI, LINE, and cron variables remain placeholders for later implementation phases. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md), [PRODUCT.md](./PRODUCT.md), and [ARCHITECTURE.md](./ARCHITECTURE.md) for the intended sequence and constraints.
