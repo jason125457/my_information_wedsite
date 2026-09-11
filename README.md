@@ -1,8 +1,8 @@
 # Personal Feed
 
-Personal Feed is a single-user information filter built to surface a small number of worthwhile stories without infinite scroll. The repository now includes the application foundation, Supabase authentication and schema, Row Level Security, a responsive seeded feed, and the source-collector foundation.
+Personal Feed is a single-user information filter built to surface a small number of worthwhile stories without infinite scroll. The repository now includes the application foundation, Supabase authentication and schema, Row Level Security, a responsive seeded feed, source collectors, and the tested AI editing and ranking foundation.
 
-The OpenAI ranking pipeline, collector persistence, persistent feed actions, digests, and LINE notifications are deliberately deferred to later slices.
+Collector persistence, persistent feed actions, digests, discovery, and LINE notifications are deliberately deferred to later slices.
 
 ## Stack
 
@@ -10,6 +10,8 @@ The OpenAI ranking pipeline, collector persistence, persistent feed actions, dig
 - Tailwind CSS 4 with a shadcn/ui-compatible component structure
 - Supabase PostgreSQL, Auth, and SSR clients
 - Official/API-first RSS, Hacker News, Reddit OAuth, and YouTube collectors
+- OpenAI Responses API structured outputs with Zod validation
+- Deterministic topic-aware ranking, feedback adjustment, and first-layer deduplication
 - Vitest for authorization and migration-contract tests
 - Vercel as the target deployment platform
 
@@ -94,4 +96,6 @@ Reddit collection requires an approved official API application and the three `R
 
 Collectors share a common contract under `lib/collectors/`, return normalized candidates, and accept an injectable fetch implementation for deterministic tests. A failed source is isolated from the remaining collection run. This phase intentionally does not write candidates to the database yet.
 
-The OpenAI, LINE, and cron variables remain placeholders for later implementation phases. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md), [PRODUCT.md](./PRODUCT.md), and [ARCHITECTURE.md](./ARCHITECTURE.md) for the intended sequence and constraints.
+AI processing requires `OPENAI_API_KEY` and model IDs in `OPENAI_MODEL_FAST`, `OPENAI_MODEL_REASONING`, and `OPENAI_MODEL_SEARCH`. The application does not hardcode model versions. Classification and summarization use the fast model; only ambiguous event deduplication uses the reasoning model. Responses use strict structured output validation and `store: false`.
+
+LINE and cron variables remain placeholders for later implementation phases. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md), [PRODUCT.md](./PRODUCT.md), and [ARCHITECTURE.md](./ARCHITECTURE.md) for the intended sequence and constraints.
