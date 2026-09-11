@@ -2,7 +2,7 @@
 
 Personal Feed is a single-user information filter built to surface a small number of worthwhile stories without infinite scroll. The repository now includes the application foundation, Supabase authentication and schema, Row Level Security, a database-backed feed, persistent reading actions, source collectors, and the tested AI editing and ranking foundation.
 
-Collector persistence, digests, discovery, and LINE notifications are deliberately deferred to later slices.
+Collector persistence, discovery, weekly review, and LINE conversational features are deliberately deferred to later slices.
 
 ## Stack
 
@@ -13,6 +13,7 @@ Collector persistence, digests, discovery, and LINE notifications are deliberate
 - OpenAI Responses API structured outputs with Zod validation
 - Deterministic topic-aware ranking, feedback adjustment, and first-layer deduplication
 - Database-backed For You, Saved, Read Later, and History views
+- Idempotent 22:00 Taipei Daily Digest generation and notification-only LINE push
 - Vitest for authorization and migration-contract tests
 - Vercel as the target deployment platform
 
@@ -99,4 +100,4 @@ Collectors share a common contract under `lib/collectors/`, return normalized ca
 
 AI processing requires `OPENAI_API_KEY` and model IDs in `OPENAI_MODEL_FAST`, `OPENAI_MODEL_REASONING`, and `OPENAI_MODEL_SEARCH`. The application does not hardcode model versions. Classification and summarization use the fast model; only ambiguous event deduplication uses the reasoning model. Responses use strict structured output validation and `store: false`.
 
-LINE and cron variables remain placeholders for later implementation phases. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md), [PRODUCT.md](./PRODUCT.md), and [ARCHITECTURE.md](./ARCHITECTURE.md) for the intended sequence and constraints.
+For Daily Digest deployment, set `CRON_SECRET`, `APP_URL`, `LINE_CHANNEL_ACCESS_TOKEN`, and `LINE_TARGET_USER_ID`. Vercel calls the protected route at `14:00 UTC`, which is `22:00 Asia/Taipei`. A LINE failure records a partial job but does not remove the completed Digest. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md), [PRODUCT.md](./PRODUCT.md), and [ARCHITECTURE.md](./ARCHITECTURE.md) for the remaining sequence and constraints.
