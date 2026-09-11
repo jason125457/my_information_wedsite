@@ -1,8 +1,8 @@
 # Personal Feed
 
-Personal Feed is a single-user information filter built to surface a small number of worthwhile stories without infinite scroll. The repository now includes the application foundation, Supabase authentication and schema, Row Level Security, a responsive seeded feed, source collectors, and the tested AI editing and ranking foundation.
+Personal Feed is a single-user information filter built to surface a small number of worthwhile stories without infinite scroll. The repository now includes the application foundation, Supabase authentication and schema, Row Level Security, a database-backed feed, persistent reading actions, source collectors, and the tested AI editing and ranking foundation.
 
-Collector persistence, persistent feed actions, digests, discovery, and LINE notifications are deliberately deferred to later slices.
+Collector persistence, digests, discovery, and LINE notifications are deliberately deferred to later slices.
 
 ## Stack
 
@@ -12,6 +12,7 @@ Collector persistence, persistent feed actions, digests, discovery, and LINE not
 - Official/API-first RSS, Hacker News, Reddit OAuth, and YouTube collectors
 - OpenAI Responses API structured outputs with Zod validation
 - Deterministic topic-aware ranking, feedback adjustment, and first-layer deduplication
+- Database-backed For You, Saved, Read Later, and History views
 - Vitest for authorization and migration-contract tests
 - Vercel as the target deployment platform
 
@@ -84,9 +85,9 @@ npm test
 npm run build
 ```
 
-The Vitest suite checks the email allowlist and safe callback paths, confirms every initial table enables RLS, verifies that browser sessions cannot provision profiles, and validates the core ownership, deduplication, and digest-idempotency contracts. `npx supabase db reset` additionally validates the SQL against a live local PostgreSQL instance.
+The Vitest suite checks the email allowlist and safe callback paths, confirms every initial table enables RLS, verifies that browser sessions cannot provision profiles, and validates collector, AI, ranking, feedback-input, deduplication, and digest-idempotency contracts. `npx supabase db reset` additionally validates the SQL against a live local PostgreSQL instance.
 
-Pull requests also run a PostgreSQL 17 integration job in GitHub Actions. It applies the migration to a clean database and verifies anonymous, unprovisioned authenticated, owner, and service-role RLS behavior with `tests/database/rls.sql`.
+Pull requests also run a PostgreSQL 17 integration job in GitHub Actions. It applies every migration in order to a clean database and verifies anonymous, unprovisioned authenticated, owner, and service-role RLS behavior, including persistent story state, with `tests/database/rls.sql`.
 
 ## Production configuration
 

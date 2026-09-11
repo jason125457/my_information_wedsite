@@ -1,44 +1,37 @@
 "use client";
 
+import { useState } from "react";
 import { Bookmark, Clock3, ExternalLink, Save, ThumbsDown } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import type { FeedStory } from "@/lib/feed/mock-stories";
+import { feedbackReasons, type FeedbackReason } from "@/lib/feed/state";
+import type { FeedStory } from "@/lib/feed/types";
 import { cn } from "@/lib/utils";
-
-const feedbackReasons = [
-  "Topic not interesting",
-  "Low value or gossip",
-  "Too technical",
-  "Already knew this",
-  "Poor source",
-  "Do not recommend this type",
-];
 
 interface FeedCardProps {
   story: FeedStory;
-  isSaved: boolean;
-  isReadLater: boolean;
   feedbackOpen: boolean;
+  isPending: boolean;
   onRead: () => void;
   onToggleSaved: () => void;
   onToggleReadLater: () => void;
   onToggleFeedback: () => void;
-  onDismiss: () => void;
+  onDismiss: (reason: FeedbackReason) => void;
 }
 
 export function FeedCard({
   story,
-  isSaved,
-  isReadLater,
   feedbackOpen,
+  isPending,
   onRead,
   onToggleSaved,
   onToggleReadLater,
   onToggleFeedback,
   onDismiss,
 }: FeedCardProps) {
+  const [feedbackReason, setFeedbackReason] = useState<FeedbackReason>("topic_not_interesting");
+
   return (
     <article
       className={cn(
@@ -74,6 +67,7 @@ export function FeedCard({
 
       <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-[var(--muted)]">
         <span className="font-semibold text-[var(--ink-soft)]">{story.source}</span>
+        {story.sourceCount > 1 ? <span>+{story.sourceCount - 1} sources</span> : null}
         <span aria-hidden="true">·</span>
         <span className="inline-flex items-center gap-1.5">
           <Clock3 aria-hidden="true" size={14} />
@@ -95,24 +89,26 @@ export function FeedCard({
         <Button
           type="button"
           size="sm"
-          variant={isReadLater ? "primary" : "secondary"}
-          aria-pressed={isReadLater}
+          variant={story.isReadLater ? "primary" : "secondary"}
+          aria-pressed={story.isReadLater}
+          disabled={isPending}
           onClick={onToggleReadLater}
         >
-          <Bookmark aria-hidden="true" size={15} fill={isReadLater ? "currentColor" : "none"} />
+          <Bookmark aria-hidden="true" size={15} fill={story.isReadLater ? "currentColor" : "none"} />
           Read later
         </Button>
         <Button
           type="button"
           size="sm"
-          variant={isSaved ? "primary" : "secondary"}
-          aria-pressed={isSaved}
+          variant={story.isSaved ? "primary" : "secondary"}
+          aria-pressed={story.isSaved}
+          disabled={isPending}
           onClick={onToggleSaved}
         >
-          <Save aria-hidden="true" size={15} fill={isSaved ? "currentColor" : "none"} />
+          <Save aria-hidden="true" size={15} fill={story.isSaved ? "currentColor" : "none"} />
           Save
         </Button>
-        <Button type="button" size="sm" variant="danger" aria-expanded={feedbackOpen} onClick={onToggleFeedback}>
+        <Button type="button" size="sm" variant="danger" aria-expanded={feedbackOpen} disabled={isPending} onClick={onToggleFeedback}>
           <ThumbsDown aria-hidden="true" size={15} />
           Not interested
         </Button>
@@ -122,13 +118,17 @@ export function FeedCard({
         <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface-subtle)] p-4 sm:flex-row sm:items-end">
           <label className="flex-1 text-sm font-semibold text-[var(--ink)]">
             Tell the feed why
-            <select className="mt-2 h-10 w-full rounded-xl border border-[var(--line-strong)] bg-white px-3 text-sm font-normal">
+            <select
+              value={feedbackReason}
+              onChange={(event) => setFeedbackReason(event.target.value as FeedbackReason)}
+              className="mt-2 h-10 w-full rounded-xl border border-[var(--line-strong)] bg-white px-3 text-sm font-normal"
+            >
               {feedbackReasons.map((reason) => (
-                <option key={reason}>{reason}</option>
+                <option key={reason.value} value={reason.value}>{reason.label}</option>
               ))}
             </select>
           </label>
-          <Button type="button" size="sm" variant="primary" onClick={onDismiss}>
+          <Button type="button" size="sm" variant="primary" disabled={isPending} onClick={() => onDismiss(feedbackReason)}>
             Hide story
           </Button>
         </div>
