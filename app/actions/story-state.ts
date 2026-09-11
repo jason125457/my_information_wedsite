@@ -38,7 +38,10 @@ export async function setStoryReadLater(
 ): Promise<StoryActionResult> {
   const parsedState = z.boolean().safeParse(isReadLater);
   if (!parsedState.success) return { ok: false, message: "Invalid read-later state." };
-  return updateStoryState(storyId, { is_read_later: parsedState.data });
+  return updateStoryState(storyId, {
+    is_read_later: parsedState.data,
+    read_later_at: parsedState.data ? new Date().toISOString() : null,
+  });
 }
 
 export async function markStoryNotInterested(
@@ -64,6 +67,7 @@ type StoryStatePatch = Partial<
     | "feedback_reason"
     | "read_at"
     | "saved_at"
+    | "read_later_at"
   >
 >;
 

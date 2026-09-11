@@ -198,6 +198,7 @@ MVP 使用 rule-based feedback 加 LLM ranking。Save 增加相似內容權重�
 - `primary_topic_id uuid null references topics`
 - `is_discovery boolean not null default false`
 - `is_active boolean not null default true`
+- `config jsonb not null default '{}'`
 - `created_at timestamptz not null`
 
 ### `raw_items`

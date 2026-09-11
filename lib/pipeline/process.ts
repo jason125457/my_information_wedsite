@@ -4,6 +4,7 @@ import type { ContentTopic, NormalizedCandidate } from "@/lib/collectors/types";
 import { compareCandidates } from "@/lib/dedupe";
 import { calculateRanking, type FeedbackSignals, type RankingResult } from "@/lib/ranking";
 import { prefilterCandidates, type PrefilterRejection } from "@/lib/pipeline/prefilter";
+import { mapConcurrent } from "@/lib/pipeline/concurrency";
 
 export const defaultTopicWeights: Record<ContentTopic, number> = {
   ai: 5,
@@ -46,6 +47,8 @@ export interface ProcessingOptions {
   now?: Date;
   topicWeights?: Partial<Record<ContentTopic, number>>;
   feedbackFor?: (candidate: NormalizedCandidate) => FeedbackSignals;
+  classificationConcurrency?: number;
+  summaryConcurrency?: number;
 }
 
 export async function processCandidates(
@@ -55,23 +58,45 @@ export async function processCandidates(
 ): Promise<ProcessingResult> {
   const maximum = clampInteger(options.maxCandidates ?? 150, 1, 500);
   const minimumScore = clamp(options.minimumScore ?? 55, 0, 100);
+  const classificationConcurrency = Math.max(1, options.classificationConcurrency ?? 5);
+  const summaryConcurrency = Math.max(1, options.summaryConcurrency ?? 4);
+
   const prefiltered = prefilterCandidates(candidates.slice(0, maximum), options.now);
   const failures: ProcessingFailure[] = [];
   const ranked: RankedCandidate[] = [];
 
-  for (const candidate of prefiltered.accepted) {
-    try {
-      const classification = await editor.classify(candidate);
-      const primaryTopic = classification.topics[0] ?? candidate.topic;
-      const ranking = calculateRanking({
-        classification,
-        primaryTopic,
-        topicWeight: options.topicWeights?.[primaryTopic] ?? defaultTopicWeights[primaryTopic],
-        feedback: options.feedbackFor?.(candidate),
+  const classificationResults = await mapConcurrent(
+    prefiltered.accepted,
+    classificationConcurrency,
+    async (candidate) => {
+      try {
+        const classification = await editor.classify(candidate);
+        const primaryTopic = classification.topics[0] ?? candidate.topic;
+        const ranking = calculateRanking({
+          classification,
+          primaryTopic,
+          topicWeight: options.topicWeights?.[primaryTopic] ?? defaultTopicWeights[primaryTopic],
+          feedback: options.feedbackFor?.(candidate),
+        });
+        return { success: true as const, candidate, classification, ranking };
+      } catch (error) {
+        return {
+          success: false as const,
+          failure: failure(candidate, "classification", error),
+        };
+      }
+    },
+  );
+
+  for (const item of classificationResults) {
+    if (item.success) {
+      ranked.push({
+        candidate: item.candidate,
+        classification: item.classification,
+        ranking: item.ranking,
       });
-      ranked.push({ candidate, classification, ranking });
-    } catch (error) {
-      failures.push(failure(candidate, "classification", error));
+    } else {
+      failures.push(item.failure);
     }
   }
 
@@ -106,14 +131,33 @@ export async function processCandidates(
   }
 
   const stories: StoryDraft[] = [];
-  for (const group of groups) {
-    try {
-      stories.push({
-        ...group,
-        summary: await editor.summarize(group.candidate, group.classification),
-      });
-    } catch (error) {
-      failures.push(failure(group.candidate, "summary", error));
+  const summaryResults = await mapConcurrent(
+    groups,
+    summaryConcurrency,
+    async (group) => {
+      try {
+        const summary = await editor.summarize(group.candidate, group.classification);
+        return {
+          success: true as const,
+          story: {
+            ...group,
+            summary,
+          },
+        };
+      } catch (error) {
+        return {
+          success: false as const,
+          failure: failure(group.candidate, "summary", error),
+        };
+      }
+    },
+  );
+
+  for (const item of summaryResults) {
+    if (item.success) {
+      stories.push(item.story);
+    } else {
+      failures.push(item.failure);
     }
   }
 

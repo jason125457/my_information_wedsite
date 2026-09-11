@@ -85,3 +85,18 @@ describe("initial database migration", () => {
     }
   });
 });
+
+describe("read_later_at and index migration", () => {
+  const readLaterMigrationPath = fileURLToPath(
+    new URL("../supabase/migrations/202609110004_read_later_at_and_indexes.sql", import.meta.url),
+  );
+  const readLaterMigration = readFileSync(readLaterMigrationPath, "utf8").toLowerCase();
+
+  it("adds read_later_at column and indexes for state queries", () => {
+    expect(readLaterMigration).toContain("add column if not exists read_later_at timestamptz");
+    expect(readLaterMigration).toContain("on public.story_state (profile_id, read_later_at desc)");
+    expect(readLaterMigration).toContain("on public.story_state (profile_id, read_at desc)");
+    expect(databaseTypes).toContain("read_later_at: string | null");
+  });
+});
+

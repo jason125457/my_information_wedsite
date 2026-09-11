@@ -39,6 +39,7 @@ export interface Database {
           primary_topic_id: string | null;
           is_discovery: boolean;
           is_active: boolean;
+          config: Json;
           created_at: string;
         },
         {
@@ -50,6 +51,7 @@ export interface Database {
           primary_topic_id?: string | null;
           is_discovery?: boolean;
           is_active?: boolean;
+          config?: Json;
           created_at?: string;
         }
       >;
@@ -132,6 +134,7 @@ export interface Database {
           feedback_reason: FeedbackReason | null;
           read_at: string | null;
           saved_at: string | null;
+          read_later_at: string | null;
           updated_at: string;
         },
         {
@@ -144,6 +147,7 @@ export interface Database {
           feedback_reason?: FeedbackReason | null;
           read_at?: string | null;
           saved_at?: string | null;
+          read_later_at?: string | null;
           updated_at?: string;
         }
       >;

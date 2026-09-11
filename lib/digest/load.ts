@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { createClient } from "@/lib/supabase/server";
-import { loadFeed } from "@/lib/feed/load-feed";
+import { loadStoriesByIds } from "@/lib/feed/load-feed";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -60,9 +60,9 @@ export async function loadDailyDigestStories(
     .eq("digest_id", digest.id)
     .order("position");
   if (linkError) throw new Error(`Unable to load digest stories: ${linkError.message}`);
-  const positions = new Map(links.map((link) => [link.story_id, link.position]));
-  const stories = (await loadFeed(supabase, profileId))
-    .filter((story) => positions.has(story.id))
-    .sort((first, second) => positions.get(first.id)! - positions.get(second.id)!);
+  if (!links || !links.length) return { title: digest.title, stories: [] };
+
+  const storyIds = links.map((link) => link.story_id);
+  const stories = await loadStoriesByIds(supabase, profileId, storyIds);
   return { title: digest.title, stories };
 }

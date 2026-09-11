@@ -1,12 +1,8 @@
 # Personal Feed
 
-Personal Feed is a single-user information filter built to surface a small number of worthwhile stories without infinite scroll. The repository now includes the application foundation, Supabase authentication and schema, Row Level Security, a database-backed feed, persistent reading actions, source collectors, and the tested AI editing and ranking foundation.
+Personal Feed is a single-user information filter built to surface a small number of worthwhile stories without infinite scroll. The repository now includes the application foundation, Supabase authentication and schema, Row Level Security, a database-backed feed, persistent reading actions, source collectors, the tested AI editing and ranking foundation, and the complete production ingestion pipeline with database persistence.
 
-Live site: [my-information-wedsite.vercel.app](https://my-information-wedsite.vercel.app)
-
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for the production Supabase and Vercel checklist.
-
-Collector persistence, discovery, weekly review, and LINE conversational features are deliberately deferred to later slices.
+Discovery, weekly review, and LINE conversational features are deferred to later slices.
 
 ## Stack
 
@@ -101,7 +97,19 @@ Create a Supabase project, apply the migration with the Supabase CLI, create onl
 
 Reddit collection requires an approved official API application and the three `REDDIT_*` values in `.env.local`. YouTube collection requires `YOUTUBE_API_KEY`. RSS and Hacker News do not require credentials. Collector requests are server-side only; never expose API credentials in browser code.
 
-Collectors share a common contract under `lib/collectors/`, return normalized candidates, and accept an injectable fetch implementation for deterministic tests. A failed source is isolated from the remaining collection run. This phase intentionally does not write candidates to the database yet.
+Collectors share a common contract under `lib/collectors/`, return normalized candidates, and accept an injectable fetch implementation for deterministic tests. A failed source is isolated from the remaining collection run.
+
+The production ingestion pipeline runs via `GET|POST /api/cron/ingest`, protected by `CRON_SECRET` and scheduled every 2 hours in Vercel (`0 */2 * * *`). The pipeline:
+1. Loads active sources from the database (`sources` table).
+2. Runs collectors concurrently with per-source error isolation.
+3. Applies deterministic in-memory prefiltering (`prefilterCandidates`).
+4. Checks existing canonical URLs and external IDs against `raw_items` in the database to filter out duplicates before AI processing (eliminating wasted API costs).
+5. Passes novel candidates through cheap AI classification, topic ranking, and event deduplication.
+6. Generates grounded summaries for worthwhile stories.
+7. Persists new candidates to `raw_items` (upsert on `canonical_url`), creates `stories`, and links primary and secondary sources in `story_sources`.
+8. Records execution metrics (fetched, filtered, duplicate, processed, and inserted counts, timings, and status) in `job_runs`.
+
+Idempotency is strictly guaranteed: re-running ingestion or encountering duplicate URLs skips redundant processing without inserting duplicate records or inflating stories.
 
 AI processing requires `OPENAI_API_KEY` and model IDs in `OPENAI_MODEL_FAST`, `OPENAI_MODEL_REASONING`, and `OPENAI_MODEL_SEARCH`. The application does not hardcode model versions. Classification and summarization use the fast model; only ambiguous event deduplication uses the reasoning model. Responses use strict structured output validation and `store: false`.
 

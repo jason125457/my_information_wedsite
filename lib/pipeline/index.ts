@@ -1,3 +1,11 @@
+export {
+  createCollectorFromSource,
+  ingestSources,
+  type IngestOptions,
+  type IngestionJobResult,
+  type IngestionJobTotals,
+  type SourceIngestStats,
+} from "@/lib/pipeline/ingest";
 export { prefilterCandidates, type PrefilterResult } from "@/lib/pipeline/prefilter";
 export {
   defaultTopicWeights,
@@ -7,3 +15,4 @@ export {
   type ProcessingResult,
   type StoryDraft,
 } from "@/lib/pipeline/process";
+
