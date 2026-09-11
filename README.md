@@ -2,6 +2,8 @@
 
 Personal Feed is a single-user information filter built to surface a small number of worthwhile stories without infinite scroll. The repository now includes the application foundation, Supabase authentication and schema, Row Level Security, a database-backed feed, persistent reading actions, source collectors, and the tested AI editing and ranking foundation.
 
+Live site: [my-information-wedsite.vercel.app](https://my-information-wedsite.vercel.app)
+
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for the production Supabase and Vercel checklist.
 
 Collector persistence, discovery, weekly review, and LINE conversational features are deliberately deferred to later slices.
