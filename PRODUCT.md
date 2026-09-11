@@ -1,7 +1,7 @@
 # Personal Feed — Product Specification
 
 > Status: MVP draft
-> Last updated: 2026-09-10
+> Last updated: 2026-09-11
 > Product mode: Single user
 
 ## 1. Product Vision
@@ -12,7 +12,7 @@ Personal Feed 是一個個人化 AI 資訊篩選工具。核心目的不是讓�
 
 ## 2. Target User
 
-MVP 只服務單一使用者，不考慮：
+MVP 的個人化資料只服務單一使用者；Feed 與 Daily Digest 可匿名唯讀瀏覽。不考慮：
 
 - 公開註冊
 - 多使用者與團隊
@@ -307,7 +307,7 @@ MVP 不做 conversational chatbot。可保留只用於 LINE 驗證與首次綁�
 
 ## 22. Authentication
 
-MVP 採 Single User Mode，以 Supabase Auth Magic Link 保護，只允許 `ALLOWED_EMAIL` 指定的 email。禁止公開註冊，不建立一般帳號管理功能。
+MVP 採 Single User Mode。Feed 與 Daily Digest 不強制登入；Save、Read Later、History 與 Not Interested 等個人化功能使用 Supabase Auth Magic Link，只允許 `ALLOWED_EMAIL` 指定的 email。禁止公開註冊，不建立一般帳號管理功能。
 
 ## 23. Product Philosophy
 

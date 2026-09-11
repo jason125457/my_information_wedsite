@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Bookmark, Clock3, ExternalLink, Save, ThumbsDown } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,7 @@ interface FeedCardProps {
   story: FeedStory;
   feedbackOpen: boolean;
   isPending: boolean;
+  canPersonalize: boolean;
   onRead: () => void;
   onToggleSaved: () => void;
   onToggleReadLater: () => void;
@@ -24,6 +26,7 @@ export function FeedCard({
   story,
   feedbackOpen,
   isPending,
+  canPersonalize,
   onRead,
   onToggleSaved,
   onToggleReadLater,
@@ -86,32 +89,55 @@ export function FeedCard({
           View original
           <ExternalLink aria-hidden="true" size={15} />
         </a>
-        <Button
-          type="button"
-          size="sm"
-          variant={story.isReadLater ? "primary" : "secondary"}
-          aria-pressed={story.isReadLater}
-          disabled={isPending}
-          onClick={onToggleReadLater}
-        >
-          <Bookmark aria-hidden="true" size={15} fill={story.isReadLater ? "currentColor" : "none"} />
-          Read later
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={story.isSaved ? "primary" : "secondary"}
-          aria-pressed={story.isSaved}
-          disabled={isPending}
-          onClick={onToggleSaved}
-        >
-          <Save aria-hidden="true" size={15} fill={story.isSaved ? "currentColor" : "none"} />
-          Save
-        </Button>
-        <Button type="button" size="sm" variant="danger" aria-expanded={feedbackOpen} disabled={isPending} onClick={onToggleFeedback}>
-          <ThumbsDown aria-hidden="true" size={15} />
-          Not interested
-        </Button>
+        {canPersonalize ? (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant={story.isReadLater ? "primary" : "secondary"}
+              aria-pressed={story.isReadLater}
+              disabled={isPending}
+              onClick={onToggleReadLater}
+            >
+              <Bookmark
+                aria-hidden="true"
+                size={15}
+                fill={story.isReadLater ? "currentColor" : "none"}
+              />
+              Read later
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={story.isSaved ? "primary" : "secondary"}
+              aria-pressed={story.isSaved}
+              disabled={isPending}
+              onClick={onToggleSaved}
+            >
+              <Save
+                aria-hidden="true"
+                size={15}
+                fill={story.isSaved ? "currentColor" : "none"}
+              />
+              Save
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              aria-expanded={feedbackOpen}
+              disabled={isPending}
+              onClick={onToggleFeedback}
+            >
+              <ThumbsDown aria-hidden="true" size={15} />
+              Not interested
+            </Button>
+          </>
+        ) : (
+          <Link href="/login" className={buttonVariants({ variant: "secondary", size: "sm" })}>
+            Sign in to personalize
+          </Link>
+        )}
       </div>
 
       {feedbackOpen ? (
@@ -124,11 +150,19 @@ export function FeedCard({
               className="mt-2 h-10 w-full rounded-xl border border-[var(--line-strong)] bg-white px-3 text-sm font-normal"
             >
               {feedbackReasons.map((reason) => (
-                <option key={reason.value} value={reason.value}>{reason.label}</option>
+                <option key={reason.value} value={reason.value}>
+                  {reason.label}
+                </option>
               ))}
             </select>
           </label>
-          <Button type="button" size="sm" variant="primary" disabled={isPending} onClick={() => onDismiss(feedbackReason)}>
+          <Button
+            type="button"
+            size="sm"
+            variant="primary"
+            disabled={isPending}
+            onClick={() => onDismiss(feedbackReason)}
+          >
             Hide story
           </Button>
         </div>

@@ -2,6 +2,8 @@
 
 Personal Feed is a single-user information filter built to surface a small number of worthwhile stories without infinite scroll. The repository now includes the application foundation, Supabase authentication and schema, Row Level Security, a database-backed feed, persistent reading actions, source collectors, and the tested AI editing and ranking foundation.
 
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for the production Supabase and Vercel checklist.
+
 Collector persistence, discovery, weekly review, and LINE conversational features are deliberately deferred to later slices.
 
 ## Stack
@@ -13,6 +15,7 @@ Collector persistence, discovery, weekly review, and LINE conversational feature
 - OpenAI Responses API structured outputs with Zod validation
 - Deterministic topic-aware ranking, feedback adjustment, and first-layer deduplication
 - Database-backed For You, Saved, Read Later, and History views
+- Public read-only Feed and Digest access; sign-in is optional for personal actions
 - Idempotent 22:00 Taipei Daily Digest generation and notification-only LINE push
 - Vitest for authorization and migration-contract tests
 - Vercel as the target deployment platform
@@ -65,9 +68,9 @@ Collector persistence, discovery, weekly review, and LINE conversational feature
    npm run dev
    ```
 
-   Open [http://localhost:3000](http://localhost:3000), request a Magic Link, then read the local email in Inbucket at [http://127.0.0.1:54324](http://127.0.0.1:54324).
+   Open [http://localhost:3000](http://localhost:3000) to browse without signing in. To test personal actions, request a Magic Link and read the local email in Inbucket at [http://127.0.0.1:54324](http://127.0.0.1:54324).
 
-The callback provisions a `profiles` row through the server-only service-role client only after the authenticated email matches `ALLOWED_EMAIL`. RLS then uses that provisioned profile as the gate for all application data. Never expose `SUPABASE_SERVICE_ROLE_KEY` to browser code or commit `.env.local`.
+The callback provisions a `profiles` row through the server-only service-role client only after the authenticated email matches `ALLOWED_EMAIL`. RLS allows anonymous reads only for Feed/Digest content; personal state and job data remain private. Never expose `SUPABASE_SERVICE_ROLE_KEY` to browser code or commit `.env.local`.
 
 ## Verification
 

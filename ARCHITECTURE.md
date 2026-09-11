@@ -38,6 +38,8 @@ MVP 不建立獨立 backend service。
 - 禁止公開註冊
 - 使用 Row Level Security（RLS）保護使用者資料
 
+公開頁面採 anonymous read-only：Feed 與 Daily Digest 可由 anon role 讀取必要的 global content tables。Profiles、topic preferences、story state 與 job logs 不公開；Save、Read Later、History 與 Feedback 仍要求指定使用者登入。
+
 ### Hosting and Scheduling
 
 - Vercel 部署 Next.js
