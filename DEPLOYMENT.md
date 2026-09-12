@@ -41,7 +41,7 @@ Reddit and YouTube credentials are required only when those collectors are enabl
 
 ## 3. Deploy and verify
 
-Deploy the `main` branch. Vercel reads `vercel.json` and invokes `/api/cron/digest` at `14:00 UTC` (`22:00 Asia/Taipei`). It sends `CRON_SECRET` as a bearer token.
+Deploy the `main` branch. Vercel reads `vercel.json` and invokes ingestion at `12:00 UTC` (`20:00 Asia/Taipei`) and `/api/cron/digest` at `14:00 UTC` (`22:00 Asia/Taipei`). It sends `CRON_SECRET` as a bearer token. On Hobby, each Cron can run only once daily and may trigger within the configured hour rather than at the exact minute.
 
 Verify:
 
@@ -54,4 +54,4 @@ Verify:
 
 LINE is optional. If it is not configured, Digest generation succeeds and the job is marked partial. A failed LINE push never deletes a completed Digest.
 
-The two-hour ingestion schedule requires OpenAI API credentials and the fast/reasoning model IDs. Until they are configured, it records a partial job and skips source fetching; it does not publish unreviewed items. Once the optional single-user login is configured, `/settings/jobs` shows recent job outcomes and source errors. `OPENAI_MODEL_SEARCH` is not required for known-source ingestion.
+The ingestion schedule requires OpenAI API credentials and the fast/reasoning model IDs. Until they are configured, it records a partial job and skips source fetching; it does not publish unreviewed items. Once the optional single-user login is configured, `/settings/jobs` shows recent job outcomes and source errors. `OPENAI_MODEL_SEARCH` is not required for known-source ingestion.
