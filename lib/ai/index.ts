@@ -1,4 +1,4 @@
-export { getAIModelConfig, getOpenAIApiKey, type AIModelConfig } from "@/lib/ai/config";
+export { getAIModelConfig, getIngestionModelConfig, getOpenAIApiKey, type AIModelConfig } from "@/lib/ai/config";
 export {
   OpenAIResponsesProvider,
   type StructuredAIProvider,

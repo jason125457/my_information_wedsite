@@ -12,6 +12,8 @@ const navigation = [
   { href: "/history", label: "History" },
 ];
 
+const privateNavigation = [{ href: "/settings/jobs", label: "Jobs" }];
+
 export function AppHeader({ email }: { email?: string }) {
   return (
     <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-[rgb(246_248_251_/_0.9)] backdrop-blur-xl">
@@ -27,7 +29,7 @@ export function AppHeader({ email }: { email?: string }) {
         </Link>
 
         <nav className="order-3 flex w-full gap-1 overflow-x-auto sm:order-2 sm:w-auto" aria-label="Personal Feed">
-          {navigation.map((item) => (
+          {[...navigation, ...(email ? privateNavigation : [])].map((item) => (
             <Link
               key={item.href}
               href={item.href}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getAIModelConfig } from "@/lib/ai/config";
+import { getAIModelConfig, getIngestionModelConfig } from "@/lib/ai/config";
 import type { StructuredAIProvider, StructuredGenerationRequest } from "@/lib/ai/provider";
 import {
   classificationSchema,
@@ -41,6 +41,10 @@ describe("AI output contracts", () => {
       }),
     ).toEqual({ fast: "fast-model", reasoning: "reasoning-model", search: "search-model" });
     expect(() => getAIModelConfig({})).toThrow("OPENAI_MODEL_FAST is required.");
+    expect(getIngestionModelConfig({
+      OPENAI_MODEL_FAST: "fast-model",
+      OPENAI_MODEL_REASONING: "reasoning-model",
+    })).toEqual({ fast: "fast-model", reasoning: "reasoning-model" });
   });
 
   it("routes classification and summaries to the fast model and dedupe to reasoning", async () => {

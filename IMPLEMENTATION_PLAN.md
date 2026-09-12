@@ -19,6 +19,7 @@
   - Deduplicated persistence to `raw_items`, `stories`, and `story_sources`.
   - Comprehensive per-source and aggregate execution metrics in `job_runs`.
   - 2-hour cron schedule `0 */2 * * *` in `vercel.json`.
+- **Deployment Readiness**: Missing OpenAI credentials skip ingestion before fetching; `/settings/jobs` exposes recent job history to the authenticated owner.
 
 ## Current Focus
 - Production Ingestion Pipeline & Collector Persistence verification and stability.
@@ -26,8 +27,7 @@
 ## Remaining MVP Plan (Next Steps)
 1. **Discovery**:
    - OpenAI Web Search exploration targeting ~20% of daily content (new AI tools, indie bands, Taiwan photography locations).
-2. **Settings & Job Observability**:
-   - `/settings` for topic weights and preferences.
-   - `/settings/jobs` for inspecting recent ingestion runs, digest generation, and collector errors.
+2. **Settings**:
+   - `/settings` for topic weights and preferences; job history is available at `/settings/jobs`.
 3. **Weekly Review**:
    - Sunday evening digest analyzing reading habits, saved topics, and a weekly synthesis.
