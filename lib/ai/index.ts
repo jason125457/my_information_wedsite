@@ -1,6 +1,6 @@
-export { getAIModelConfig, getIngestionModelConfig, getOpenAIApiKey, type AIModelConfig } from "@/lib/ai/config";
+export { getAIModelConfig, getIngestionModelConfig, getGeminiApiKey, type AIModelConfig } from "@/lib/ai/config";
 export {
-  OpenAIResponsesProvider,
+  GeminiInteractionsProvider,
   type StructuredAIProvider,
   type StructuredGenerationRequest,
 } from "@/lib/ai/provider";

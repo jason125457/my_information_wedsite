@@ -36,6 +36,7 @@ export interface ProcessingFailure {
 
 export interface ProcessingResult {
   stories: StoryDraft[];
+  completedCandidates: NormalizedCandidate[];
   prefilterRejected: PrefilterRejection[];
   belowThresholdCount: number;
   failures: ProcessingFailure[];
@@ -49,6 +50,9 @@ export interface ProcessingOptions {
   feedbackFor?: (candidate: NormalizedCandidate) => FeedbackSignals;
   classificationConcurrency?: number;
   summaryConcurrency?: number;
+  classificationBatchSize?: number;
+  maxSummaries?: number;
+  maxDedupeReviews?: number;
 }
 
 export async function processCandidates(
@@ -65,30 +69,40 @@ export async function processCandidates(
   const failures: ProcessingFailure[] = [];
   const ranked: RankedCandidate[] = [];
 
-  const classificationResults = await mapConcurrent(
-    prefiltered.accepted,
+  const batchSize = clampInteger(options.classificationBatchSize ?? 1, 1, 8);
+  const batches: NormalizedCandidate[][] = [];
+  for (let index = 0; index < prefiltered.accepted.length; index += batchSize) {
+    batches.push(prefiltered.accepted.slice(index, index + batchSize));
+  }
+  const classificationBatches = await mapConcurrent(
+    batches,
     classificationConcurrency,
-    async (candidate) => {
+    async (batch) => {
       try {
-        const classification = await editor.classify(candidate);
-        const primaryTopic = classification.topics[0] ?? candidate.topic;
-        const ranking = calculateRanking({
-          classification,
-          primaryTopic,
-          topicWeight: options.topicWeights?.[primaryTopic] ?? defaultTopicWeights[primaryTopic],
-          feedback: options.feedbackFor?.(candidate),
+        const classifications = batchSize === 1
+          ? [await editor.classify(batch[0])]
+          : await editor.classifyMany(batch);
+        return batch.map((candidate, index) => {
+          const classification = classifications[index];
+          const primaryTopic = classification.topics[0] ?? candidate.topic;
+          const ranking = calculateRanking({
+            classification,
+            primaryTopic,
+            topicWeight: options.topicWeights?.[primaryTopic] ?? defaultTopicWeights[primaryTopic],
+            feedback: options.feedbackFor?.(candidate),
+          });
+          return { success: true as const, candidate, classification, ranking };
         });
-        return { success: true as const, candidate, classification, ranking };
       } catch (error) {
-        return {
+        return batch.map((candidate) => ({
           success: false as const,
           failure: failure(candidate, "classification", error),
-        };
+        }));
       }
     },
   );
 
-  for (const item of classificationResults) {
+  for (const item of classificationBatches.flat()) {
     if (item.success) {
       ranked.push({
         candidate: item.candidate,
@@ -104,6 +118,7 @@ export async function processCandidates(
     .filter((item) => item.ranking.finalScore >= minimumScore)
     .sort((first, second) => second.ranking.finalScore - first.ranking.finalScore);
   const groups: Array<RankedCandidate & { additionalSources: NormalizedCandidate[] }> = [];
+  let aiDedupeReviews = 0;
 
   for (const item of aboveThreshold) {
     let matched = false;
@@ -114,7 +129,8 @@ export async function processCandidates(
         matched = true;
         break;
       }
-      if (comparison.requiresAIReview) {
+      if (comparison.requiresAIReview && aiDedupeReviews < (options.maxDedupeReviews ?? Infinity)) {
+        aiDedupeReviews += 1;
         try {
           const decision = await editor.decideDuplicate(group.candidate, item.candidate);
           if (decision.same_event) {
@@ -132,7 +148,7 @@ export async function processCandidates(
 
   const stories: StoryDraft[] = [];
   const summaryResults = await mapConcurrent(
-    groups,
+    groups.slice(0, options.maxSummaries ?? groups.length),
     summaryConcurrency,
     async (group) => {
       try {
@@ -163,6 +179,10 @@ export async function processCandidates(
 
   return {
     stories,
+    completedCandidates: [
+      ...ranked.filter((item) => item.ranking.finalScore < minimumScore).map((item) => item.candidate),
+      ...stories.flatMap((story) => [story.candidate, ...story.additionalSources]),
+    ],
     prefilterRejected: prefiltered.rejected,
     belowThresholdCount: ranked.length - aboveThreshold.length,
     failures,

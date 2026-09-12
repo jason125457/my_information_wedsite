@@ -14,9 +14,9 @@ export default async function JobsPage() {
   const { supabase, user } = await requireAuthenticatedUser();
   const jobs = await loadRecentJobs(supabase);
   const aiConfigured = Boolean(
-    process.env.OPENAI_API_KEY &&
-      process.env.OPENAI_MODEL_FAST &&
-      process.env.OPENAI_MODEL_REASONING,
+    process.env.GEMINI_API_KEY &&
+      process.env.GEMINI_MODEL_FAST &&
+      process.env.GEMINI_MODEL_REASONING,
   );
 
   return (
@@ -31,7 +31,7 @@ export default async function JobsPage() {
 
         {!aiConfigured ? (
           <p className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            AI 收集尚未啟用：請在 Vercel 設定 OpenAI API 金鑰、快速模型與推理模型。排程會略過收集，不會把舊資料當成新內容。
+            AI 收集尚未啟用：請在 Vercel 設定 Gemini API 金鑰與兩個模型。排程會略過收集，不會把舊資料當成新內容。
           </p>
         ) : null}
 

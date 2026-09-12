@@ -543,7 +543,7 @@ describe("AI Pipeline Bounded Concurrency", () => {
     const mockEditor: StoryAIEditor = {
       classify: async (candidate: NormalizedCandidate) => {
         if (candidate.externalId === "ext-2") {
-          throw new Error("Simulated OpenAI rate limit / parse error");
+          throw new Error("Simulated Gemini rate limit / parse error");
         }
         return {
           topics: ["technology"],
@@ -572,7 +572,9 @@ describe("AI Pipeline Bounded Concurrency", () => {
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0].externalId).toBe("ext-2");
     expect(result.failures[0].stage).toBe("classification");
-    expect(result.failures[0].errorMessage).toContain("Simulated OpenAI rate limit");
+    expect(result.failures[0].errorMessage).toContain("Simulated Gemini rate limit");
+    expect(result.completedCandidates).toHaveLength(5);
+    expect(result.completedCandidates.some((candidate) => candidate.externalId === "ext-2")).toBe(false);
   });
 });
 

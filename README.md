@@ -10,7 +10,7 @@ Discovery, weekly review, and LINE conversational features are deferred to later
 - Tailwind CSS 4 with a shadcn/ui-compatible component structure
 - Supabase PostgreSQL, Auth, and SSR clients
 - Official/API-first RSS, Hacker News, Reddit OAuth, and YouTube collectors
-- OpenAI Responses API structured outputs with Zod validation
+- Gemini Interactions API structured outputs with Zod validation
 - Deterministic topic-aware ranking, feedback adjustment, and first-layer deduplication
 - Database-backed For You, Saved, Read Later, and History views
 - Public read-only Feed and Digest access; sign-in is optional for personal actions
@@ -112,6 +112,6 @@ The production ingestion pipeline runs via `GET|POST /api/cron/ingest`, protecte
 
 Idempotency is strictly guaranteed: re-running ingestion or encountering duplicate URLs skips redundant processing without inserting duplicate records or inflating stories.
 
-AI ingestion requires `OPENAI_API_KEY`, `OPENAI_MODEL_FAST`, and `OPENAI_MODEL_REASONING`; `OPENAI_MODEL_SEARCH` is reserved for Discovery. The application does not hardcode model versions. Classification and summarization use the fast model; only ambiguous event deduplication uses the reasoning model. Responses use strict structured output validation and `store: false`. If the ingestion credentials are absent, the scheduled job records a partial/skipped result without fetching sources or claiming new content.
+AI ingestion requires `GEMINI_API_KEY`, `GEMINI_MODEL_FAST`, and `GEMINI_MODEL_REASONING`; `GEMINI_MODEL_SEARCH` is reserved for future Discovery. For the user's current AI Studio limits, start with `gemini-3.1-flash-lite` for batched classification and `gemini-3.5-flash-lite` for summaries and ambiguous deduplication. Do not put the API key in Git, this README, or chat; set it as a sensitive Production environment variable in Vercel and redeploy. The application does not hardcode production model versions. Gemini calls use the stateless Interactions API (`store: false`), strict JSON schemas, runtime Zod validation, a conservative per-model 14 RPM start limit, batches of up to five classifications, at most 100 candidate classifications, 20 summaries, and 10 ambiguous AI deduplication reviews per run. Failed and deferred candidates remain eligible for a future run. A missing key or model skips ingestion before fetching. Actual Gemini quotas depend on the AI Studio project; free-tier content may be used by Google to improve its products. The scheduled job cannot be considered live until a real Gemini key is configured and an ingestion run succeeds.
 
 For Daily Digest deployment, set `CRON_SECRET`, `APP_URL`, `LINE_CHANNEL_ACCESS_TOKEN`, and `LINE_TARGET_USER_ID`. Vercel calls the protected route at `14:00 UTC`, which is `22:00 Asia/Taipei`. A LINE failure records a partial job but does not remove the completed Digest. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md), [PRODUCT.md](./PRODUCT.md), and [ARCHITECTURE.md](./ARCHITECTURE.md) for the remaining sequence and constraints.

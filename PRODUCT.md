@@ -173,7 +173,7 @@ MVP 支援：
 - 主流新聞與財經媒體的官方 RSS／API
 - Bandcamp／音樂媒體
 - 台灣攝影 Blog／網站
-- OpenAI Web Search（Discovery）
+- Gemini Google Search grounding（Discovery，規劃中）
 
 第一版暫不處理 Threads、Instagram、TikTok 與 X。
 

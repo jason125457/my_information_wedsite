@@ -35,19 +35,19 @@ describe("AI output contracts", () => {
   it("requires model IDs from environment configuration", () => {
     expect(
       getAIModelConfig({
-        OPENAI_MODEL_FAST: "fast-model",
-        OPENAI_MODEL_REASONING: "reasoning-model",
-        OPENAI_MODEL_SEARCH: "search-model",
+        GEMINI_MODEL_FAST: "fast-model",
+        GEMINI_MODEL_REASONING: "reasoning-model",
+        GEMINI_MODEL_SEARCH: "search-model",
       }),
     ).toEqual({ fast: "fast-model", reasoning: "reasoning-model", search: "search-model" });
-    expect(() => getAIModelConfig({})).toThrow("OPENAI_MODEL_FAST is required.");
+    expect(() => getAIModelConfig({})).toThrow("GEMINI_MODEL_FAST is required.");
     expect(getIngestionModelConfig({
-      OPENAI_MODEL_FAST: "fast-model",
-      OPENAI_MODEL_REASONING: "reasoning-model",
+      GEMINI_MODEL_FAST: "fast-model",
+      GEMINI_MODEL_REASONING: "reasoning-model",
     })).toEqual({ fast: "fast-model", reasoning: "reasoning-model" });
   });
 
-  it("routes classification and summaries to the fast model and dedupe to reasoning", async () => {
+  it("routes batched classification to fast and summaries/dedupe to reasoning", async () => {
     const calls: Array<{ model: string; schemaName: string }> = [];
     const summary: StorySummary = {
       title: "A grounded summary",
@@ -82,7 +82,7 @@ describe("AI output contracts", () => {
 
     expect(calls).toEqual([
       { model: "fast-model", schemaName: "story_classification" },
-      { model: "fast-model", schemaName: "story_summary" },
+      { model: "reasoning-model", schemaName: "story_summary" },
       { model: "reasoning-model", schemaName: "duplicate_decision" },
     ]);
   });
@@ -233,6 +233,45 @@ describe("cheap prefilter", () => {
 });
 
 describe("processing orchestration", () => {
+  it("batches classification and leaves deferred summaries eligible for a later run", async () => {
+    const calls: string[] = [];
+    const provider: StructuredAIProvider = {
+      async generate<T>(request: StructuredGenerationRequest<T>) {
+        calls.push(request.schemaName);
+        if (request.schemaName === "story_classification_batch") {
+          const items = JSON.parse(request.input) as Array<{ index: number }>;
+          return request.schema.parse({ results: items.map((item) => ({ index: item.index, classification })) });
+        }
+        if (request.schemaName === "story_summary") {
+          return request.schema.parse({ title: "Grounded title", summary: "First sentence. Second sentence.", why_recommended: "Relevant." });
+        }
+        throw new Error(`Unexpected call: ${request.schemaName}`);
+      },
+    };
+    const editor = new StoryAIEditor(provider, { fast: "fast", reasoning: "reasoning" });
+    const titles = [
+      "OpenAI introduces a new desktop application",
+      "A cybersecurity team documents a ransomware incident",
+      "A Japanese shoegaze band releases its debut album",
+      "Taiwan photographers share a mountain sunrise location",
+      "A chip maker reports quarterly financial results",
+    ];
+    const candidates = Array.from({ length: 5 }, (_, index) => makeCandidate({
+      sourceId: `source-${index}`, externalId: `${index}`,
+      url: `https://example.com/story-${index}`, canonicalUrl: `https://example.com/story-${index}`,
+      title: titles[index],
+      publishedAt: "2026-09-12T12:00:00Z",
+    }));
+    const result = await processCandidates(candidates, editor, {
+      now: new Date("2026-09-13T00:00:00Z"), minimumScore: 0,
+      classificationBatchSize: 3, maxSummaries: 2, maxDedupeReviews: 0,
+    });
+    expect(calls.filter((name) => name === "story_classification_batch")).toHaveLength(2);
+    expect(calls.filter((name) => name === "story_summary")).toHaveLength(2);
+    expect(result.stories).toHaveLength(2);
+    expect(result.completedCandidates).toHaveLength(2);
+  });
+
   it("summarizes only high-value deduplicated stories", async () => {
     const calls: string[] = [];
     const provider: StructuredAIProvider = {

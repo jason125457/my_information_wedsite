@@ -22,7 +22,7 @@ This is a single-user application. Do not build public registration, teams, soci
 
 ## Required Stack
 
-Use Next.js, TypeScript, App Router, Tailwind CSS, shadcn/ui, Supabase PostgreSQL, Supabase Auth, OpenAI Responses API, Vercel, and LINE Messaging API. Do not replace a major architecture component without documenting why in `ARCHITECTURE.md`.
+Use Next.js, TypeScript, App Router, Tailwind CSS, shadcn/ui, Supabase PostgreSQL, Supabase Auth, Gemini Interactions API, Vercel, and LINE Messaging API. The Gemini switch and its rationale are documented in `ARCHITECTURE.md`. Do not replace another major architecture component without documenting why there.
 
 ## Implementation Strategy
 
@@ -63,7 +63,7 @@ Prefer official APIs:
 - Reddit: official API／OAuth
 - Hacker News: official API
 - YouTube: YouTube Data API; RSS may be a low-cost fallback
-- OpenAI discovery: Responses API Web Search
+- Gemini discovery (planned): Google Search grounding with original-source metadata
 
 Do not introduce scraping workarounds to avoid an API.
 
@@ -90,6 +90,8 @@ Deterministic Filter
 ```
 
 Model IDs must come from environment variables. Never hardcode a model version throughout the codebase. AI outputs that affect database state must use structured schemas and runtime validation.
+
+Respect the user's Gemini free-tier limits: batch classification, rate-limit requests by model, cap expensive stages per ingestion run, and leave failed or deferred candidates eligible for a later run. Never assume free-tier quotas are guaranteed.
 
 ## Ranking and Discovery
 

@@ -385,9 +385,9 @@ describe("Ingestion idempotency & raw_item duplicate handling", () => {
 
 describe("Ingestion deployment readiness", () => {
   it("records a partial job without fetching when AI is not configured", async () => {
-    vi.stubEnv("OPENAI_API_KEY", "");
-    vi.stubEnv("OPENAI_MODEL_FAST", "");
-    vi.stubEnv("OPENAI_MODEL_REASONING", "");
+    vi.stubEnv("GEMINI_API_KEY", "");
+    vi.stubEnv("GEMINI_MODEL_FAST", "");
+    vi.stubEnv("GEMINI_MODEL_REASONING", "");
     try {
       const mockFetch = vi.fn();
       const mockSupabase = createMockSupabase();
@@ -398,7 +398,7 @@ describe("Ingestion deployment readiness", () => {
 
       expect(result.status).toBe("partial");
       expect(result.itemsProcessed).toBe(0);
-      expect(result.warning).toContain("OPENAI_API_KEY");
+      expect(result.warning).toContain("GEMINI_API_KEY");
       expect(mockFetch).not.toHaveBeenCalled();
       expect(mockSupabase.state.jobRuns[0].status).toBe("partial");
       expect(mockSupabase.state.jobRuns[0].error_message).toContain("AI ingestion is not configured");

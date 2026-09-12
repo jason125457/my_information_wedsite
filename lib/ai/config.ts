@@ -8,21 +8,21 @@ type Environment = Readonly<Record<string, string | undefined>>;
 
 export function getAIModelConfig(environment: Environment = process.env): AIModelConfig {
   return {
-    fast: requireValue(environment.OPENAI_MODEL_FAST, "OPENAI_MODEL_FAST"),
-    reasoning: requireValue(environment.OPENAI_MODEL_REASONING, "OPENAI_MODEL_REASONING"),
-    search: requireValue(environment.OPENAI_MODEL_SEARCH, "OPENAI_MODEL_SEARCH"),
+    fast: requireValue(environment.GEMINI_MODEL_FAST, "GEMINI_MODEL_FAST"),
+    reasoning: requireValue(environment.GEMINI_MODEL_REASONING, "GEMINI_MODEL_REASONING"),
+    search: requireValue(environment.GEMINI_MODEL_SEARCH, "GEMINI_MODEL_SEARCH"),
   };
 }
 
 export function getIngestionModelConfig(environment: Environment = process.env): Pick<AIModelConfig, "fast" | "reasoning"> {
   return {
-    fast: requireValue(environment.OPENAI_MODEL_FAST, "OPENAI_MODEL_FAST"),
-    reasoning: requireValue(environment.OPENAI_MODEL_REASONING, "OPENAI_MODEL_REASONING"),
+    fast: requireValue(environment.GEMINI_MODEL_FAST, "GEMINI_MODEL_FAST"),
+    reasoning: requireValue(environment.GEMINI_MODEL_REASONING, "GEMINI_MODEL_REASONING"),
   };
 }
 
-export function getOpenAIApiKey(environment: Environment = process.env) {
-  return requireValue(environment.OPENAI_API_KEY, "OPENAI_API_KEY");
+export function getGeminiApiKey(environment: Environment = process.env) {
+  return requireValue(environment.GEMINI_API_KEY, "GEMINI_API_KEY");
 }
 
 function requireValue(value: string | undefined, name: string) {

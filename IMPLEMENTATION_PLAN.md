@@ -19,14 +19,14 @@
   - Deduplicated persistence to `raw_items`, `stories`, and `story_sources`.
   - Comprehensive per-source and aggregate execution metrics in `job_runs`.
   - Daily 20:00 Taipei cron on the current Vercel Hobby deployment; the two-hour cadence remains a future target.
-- **Deployment Readiness**: Missing OpenAI credentials skip ingestion before fetching; `/settings/jobs` exposes recent job history to the authenticated owner.
+- **Deployment Readiness**: Missing Gemini credentials skip ingestion before fetching; `/settings/jobs` exposes recent job history to the authenticated owner.
 
 ## Current Focus
 - Production Ingestion Pipeline & Collector Persistence verification and stability.
 
 ## Remaining MVP Plan (Next Steps)
 1. **Discovery**:
-   - OpenAI Web Search exploration targeting ~20% of daily content (new AI tools, indie bands, Taiwan photography locations).
+   - Gemini Google Search grounding exploration targeting ~20% of daily content (new AI tools, indie bands, Taiwan photography locations).
 2. **Settings**:
    - `/settings` for topic weights and preferences; job history is available at `/settings/jobs`.
 3. **Weekly Review**:

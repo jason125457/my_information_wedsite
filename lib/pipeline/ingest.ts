@@ -1,5 +1,5 @@
-import { getIngestionModelConfig, getOpenAIApiKey } from "@/lib/ai/config";
-import { OpenAIResponsesProvider } from "@/lib/ai/provider";
+import { getIngestionModelConfig, getGeminiApiKey } from "@/lib/ai/config";
+import { GeminiInteractionsProvider } from "@/lib/ai/provider";
 import { StoryAIEditor } from "@/lib/ai/story-editor";
 import {
   HackerNewsCollector,
@@ -157,10 +157,10 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     // An injected editor keeps tests and controlled backfills independent of production secrets.
     if (!options.editor) {
       try {
-        getOpenAIApiKey();
+        getGeminiApiKey();
         getIngestionModelConfig();
       } catch {
-        const warning = "AI ingestion is not configured. Set OPENAI_API_KEY, OPENAI_MODEL_FAST, and OPENAI_MODEL_REASONING.";
+        const warning = "AI ingestion is not configured. Set GEMINI_API_KEY, GEMINI_MODEL_FAST, and GEMINI_MODEL_REASONING.";
         const totals = computeTotals(statsBySource, 0);
         await finishJobRun(supabase, job.id, "partial", 0, statsBySource, totals, startTime, warning);
         return {
@@ -281,9 +281,9 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     // 7. AI processing pipeline
     let editor = options.editor;
     if (!editor) {
-      const apiKey = getOpenAIApiKey();
+      const apiKey = getGeminiApiKey();
       const models = getIngestionModelConfig();
-      const provider = new OpenAIResponsesProvider(apiKey);
+      const provider = new GeminiInteractionsProvider(apiKey);
       editor = new StoryAIEditor(provider, models);
     }
 
@@ -293,11 +293,14 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     const processingResult = await processCandidates(candidatesToProcess, editor, {
       now,
       minimumScore: options.minimumScore ?? 55,
-      maxCandidates: options.maxTotalCandidates ?? 150,
+      maxCandidates: options.maxTotalCandidates ?? 100,
+      classificationBatchSize: options.editor ? 1 : 5,
+      maxSummaries: options.editor ? undefined : 20,
+      maxDedupeReviews: options.editor ? undefined : 10,
       feedbackFor: (candidate) => feedbackProfile.feedbackFor(candidate),
     });
 
-    for (const candidate of candidatesToProcess) {
+    for (const candidate of processingResult.completedCandidates) {
       const stat = statsBySource.get(candidate.sourceId);
       if (stat) {
         stat.processedCount += 1;
@@ -307,7 +310,7 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     // 8. Database persistence
     // 8a. Persist all processed raw_items with upsert on canonical_url
     const rawItemsMap = new Map<string, string>(); // canonicalUrl -> raw_item_id
-    const rawPayload = candidatesToProcess.map((c) => ({
+    const rawPayload = processingResult.completedCandidates.map((c) => ({
       source_id: c.sourceId,
       external_id: c.externalId,
       url: c.url,
@@ -319,10 +322,9 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
       raw_metadata: c.rawMetadata,
     }));
 
-    const { data: insertedRaw, error: rawError } = await supabase
-      .from("raw_items")
-      .upsert(rawPayload, { onConflict: "canonical_url" })
-      .select("id, canonical_url");
+    const { data: insertedRaw, error: rawError } = rawPayload.length
+      ? await supabase.from("raw_items").upsert(rawPayload, { onConflict: "canonical_url" }).select("id, canonical_url")
+      : { data: [], error: null };
 
     if (rawError) {
       throw new Error(`Failed to persist raw items: ${rawError.message}`);
@@ -415,13 +417,15 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     // 9. Finalize job_runs record
     const totals = computeTotals(statsBySource, totalStoriesCreated);
     const hasSourceErrors = Array.from(statsBySource.values()).some((s) => s.error !== null);
-    const status = hasSourceErrors
+    const aiFailureCount = processingResult.failures.length;
+    const warning = aiFailureCount ? `${aiFailureCount} AI processing item(s) failed; they remain eligible for retry.` : undefined;
+    const status = hasSourceErrors || aiFailureCount > 0
       ? totalStoriesCreated > 0
         ? "partial"
-        : "failed"
+        : processingResult.completedCandidates.length > 0 ? "partial" : "failed"
       : "succeeded";
 
-    await finishJobRun(supabase, job.id, status, totalStoriesCreated, statsBySource, totals, startTime);
+    await finishJobRun(supabase, job.id, status, totalStoriesCreated, statsBySource, totals, startTime, warning);
 
     return {
       jobId: job.id,
@@ -430,6 +434,7 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
       sources: Array.from(statsBySource.values()),
       totals,
       durationMs: Date.now() - startTime,
+      warning,
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Ingestion job failed.";

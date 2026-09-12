@@ -1,7 +1,7 @@
 # Personal Feed — Architecture
 
 > Status: MVP draft
-> Last updated: 2026-09-10
+> Last updated: 2026-09-12
 > Product requirements: [PRODUCT.md](./PRODUCT.md)
 
 ## 1. Architecture Goals
@@ -48,13 +48,15 @@ MVP 不建立獨立 backend service。
 
 ## 3. AI Layer
 
-使用 OpenAI Responses API，模型名稱由環境變數提供，不在程式碼中寫死：
+決策（2026-09-12）：單人 MVP 優先使用使用者現有的 Gemini API 免費額度，取代原訂 OpenAI Responses API。Gemini 由 server-side adapter 呼叫；模型名稱由環境變數提供，不在程式碼中寫死：
 
-- `OPENAI_MODEL_FAST`：分類、初步評分、短摘要、推薦原因、feedback interpretation
-- `OPENAI_MODEL_REASONING`：模糊事件去重、Daily Digest 最終排序、Weekly Review
-- `OPENAI_MODEL_SEARCH`：Web Search discovery
+- `GEMINI_MODEL_FAST`：批次分類與初步評分（起始建議 `gemini-3.1-flash-lite`）
+- `GEMINI_MODEL_REASONING`：摘要、推薦原因與少量模糊事件去重（起始建議 `gemini-3.5-flash-lite`）
+- `GEMINI_MODEL_SEARCH`：未來 Discovery 的搜尋模型，現階段不要求設定
 
-Discovery 搜尋結果必須保存 URL、Title、Source 與 citation metadata，UI 必須顯示清楚且可點擊的原始來源。
+目前 Google AI Studio 顯示兩個 Flash-Lite 型號各 15 RPM、500 RPD；服務端必須以模型分別限速、批次分類、限制單次摘要與模糊去重呼叫數，避免 429 和 Vercel Hobby 單次五分鐘執行限制。額度可能調整，不能將其視為永遠保證。免費層資料使用政策需在部署說明中揭露。
+
+未來 Discovery 可用 Gemini 的 Google Search grounding，但必須保存 URL、Title、Source 與 citation metadata，UI 必須顯示清楚且可點擊的原始來源；此功能尚未實作。
 
 所有會影響資料庫狀態的 AI 輸出都必須使用 structured output，並通過 runtime schema validation。
 
@@ -94,7 +96,7 @@ interface Collector {
 
 依序偏好官方 RSS／publisher RSS、正式 API、允許存取的公開網頁抽取。MVP 不建立大型新聞爬蟲。
 
-### OpenAI Web Search
+### Gemini Search Grounding（規劃）
 
 用於 Discovery，包括新 AI 工具、樂團、攝影景點、文章與潛在優質來源。
 
@@ -318,10 +320,10 @@ LINE 發送失敗要寫入 job log，但不回滾已成功產生的 Digest。
 ## 15. Environment Variables
 
 ```dotenv
-OPENAI_API_KEY=
-OPENAI_MODEL_FAST=
-OPENAI_MODEL_REASONING=
-OPENAI_MODEL_SEARCH=
+GEMINI_API_KEY=
+GEMINI_MODEL_FAST=
+GEMINI_MODEL_REASONING=
+GEMINI_MODEL_SEARCH=
 
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
@@ -410,7 +412,7 @@ personal-feed/
 3. AI Pipeline：classify、rank、dedupe、summary
 4. Personal Feed：For You、topic pages、read state、read later、saved、feedback
 5. Digest：Daily Digest、LINE、cron
-6. Discovery：OpenAI Web Search 與約 20% exploration
+6. Discovery：Gemini Search Grounding 與約 20% exploration
 7. Weekly Review：reading analytics、saved analytics、weekly AI summary
 
 ## 20. Architecture Principle

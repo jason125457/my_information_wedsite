@@ -30,10 +30,10 @@ Import `jason125457/my_information_wedsite` as a Next.js project. Add these Prod
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-only migrations/jobs/auth provisioning |
 | `CRON_SECRET` | Yes | Random 16+ character cron bearer secret |
 | `ALLOWED_EMAIL` | Personal actions only | The only email allowed to sign in |
-| `OPENAI_API_KEY` | AI processing only | Server-side Responses API access |
-| `OPENAI_MODEL_FAST` | AI processing only | Classification and summarization model ID |
-| `OPENAI_MODEL_REASONING` | AI processing only | Ambiguous deduplication model ID |
-| `OPENAI_MODEL_SEARCH` | Discovery only | Web Search model ID |
+| `GEMINI_API_KEY` | AI processing only | Server-side Gemini Interactions API access; mark Sensitive in Vercel |
+| `GEMINI_MODEL_FAST` | AI processing only | Batched classification model ID; use `gemini-3.1-flash-lite` initially |
+| `GEMINI_MODEL_REASONING` | AI processing only | Summary and ambiguous deduplication model ID; use `gemini-3.5-flash-lite` initially |
+| `GEMINI_MODEL_SEARCH` | Future Discovery only | Search grounding model ID; leave unset for now |
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINE only | Messaging API channel token |
 | `LINE_TARGET_USER_ID` | LINE only | Recipient user ID |
 
@@ -54,4 +54,4 @@ Verify:
 
 LINE is optional. If it is not configured, Digest generation succeeds and the job is marked partial. A failed LINE push never deletes a completed Digest.
 
-The ingestion schedule requires OpenAI API credentials and the fast/reasoning model IDs. Until they are configured, it records a partial job and skips source fetching; it does not publish unreviewed items. Once the optional single-user login is configured, `/settings/jobs` shows recent job outcomes and source errors. `OPENAI_MODEL_SEARCH` is not required for known-source ingestion.
+The ingestion schedule requires the Gemini API key and fast/reasoning model IDs. Until they are configured, it records a partial job and skips source fetching; it does not publish unreviewed items. Once the optional single-user login is configured, `/settings/jobs` shows recent job outcomes and source errors. `GEMINI_MODEL_SEARCH` is not required for known-source ingestion. Configure the Gemini key in Vercel rather than GitHub, then redeploy; a key alone does not update a prior deployment. Google states that free-tier content may be used to improve its products, so avoid sending private information to this project while it uses the free tier.
