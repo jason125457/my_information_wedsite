@@ -18,7 +18,7 @@
   - Database-level duplicate pre-checking against `raw_items` prior to AI processing (eliminating redundant API costs).
   - Deduplicated persistence to `raw_items`, `stories`, and `story_sources`.
   - Comprehensive per-source and aggregate execution metrics in `job_runs`.
-  - 2-hour cron schedule `0 */2 * * *` in `vercel.json`.
+  - Daily 20:00 Taipei cron on the current Vercel Hobby deployment; the two-hour cadence remains a future target.
 - **Deployment Readiness**: Missing OpenAI credentials skip ingestion before fetching; `/settings/jobs` exposes recent job history to the authenticated owner.
 
 ## Current Focus

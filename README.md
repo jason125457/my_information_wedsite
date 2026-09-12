@@ -100,7 +100,7 @@ Reddit collection requires an approved official API application and the three `R
 
 Collectors share a common contract under `lib/collectors/`, return normalized candidates, and accept an injectable fetch implementation for deterministic tests. A failed source is isolated from the remaining collection run.
 
-The production ingestion pipeline runs via `GET|POST /api/cron/ingest`, protected by `CRON_SECRET` and scheduled every 2 hours in Vercel (`0 */2 * * *`). The pipeline:
+The production ingestion pipeline runs via `GET|POST /api/cron/ingest`, protected by `CRON_SECRET`. On the current Vercel Hobby deployment it runs daily at 20:00 Taipei (`0 12 * * *` UTC), ahead of the 22:00 Digest. The two-hour cadence remains a future target because Hobby does not accept more-than-daily cron expressions. The pipeline:
 1. Loads active sources from the database (`sources` table).
 2. Runs collectors concurrently with per-source error isolation.
 3. Applies deterministic in-memory prefiltering (`prefilterCandidates`).

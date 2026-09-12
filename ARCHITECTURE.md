@@ -301,6 +301,8 @@ Cron endpoints 必須驗證 `CRON_SECRET` 並具備 idempotency。UI 的 read、
 | Daily Digest | 每天 22:00 | `0 14 * * *` |
 | Weekly Review | 週日 21:00 | `0 13 * * 0` |
 
+目前部署於 Vercel Hobby，該方案不接受單一 Cron 每日執行多次。因此正式部署暫以 `0 12 * * *`（台北 20:00）每天收集一次，預留時間給 22:00 Digest；每兩小時更新仍是產品目標，日後可改用合適的排程服務或升級方案。Hobby Cron 可能在指定小時內延後觸發，不能保證準點。這是部署限制，不改變無低品質內容填充的產品原則。
+
 Daily Digest 流程：過去 24 小時 Stories → 移除 Not Interested → 套用 feedback → deduplicate → rank → 選出約 15～20 則 → 儲存 Digest → 推送 LINE。若只有 11 則達標，就只保存 11 則。
 
 Known／Discovery 的 80／20 以每日結果為目標，不要求每次 refresh 精準符合。
