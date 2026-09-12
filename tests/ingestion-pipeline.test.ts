@@ -383,6 +383,31 @@ describe("Ingestion idempotency & raw_item duplicate handling", () => {
   });
 });
 
+describe("Ingestion deployment readiness", () => {
+  it("records a partial job without fetching when AI is not configured", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "");
+    vi.stubEnv("OPENAI_MODEL_FAST", "");
+    vi.stubEnv("OPENAI_MODEL_REASONING", "");
+    try {
+      const mockFetch = vi.fn();
+      const mockSupabase = createMockSupabase();
+      const result = await ingestSources({
+        supabase: mockSupabase as unknown as IngestOptions["supabase"],
+        fetchImplementation: mockFetch as typeof fetch,
+      });
+
+      expect(result.status).toBe("partial");
+      expect(result.itemsProcessed).toBe(0);
+      expect(result.warning).toContain("OPENAI_API_KEY");
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(mockSupabase.state.jobRuns[0].status).toBe("partial");
+      expect(mockSupabase.state.jobRuns[0].error_message).toContain("AI ingestion is not configured");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
 describe("Story persistence and primary source linking", () => {
   it("persists stories with primary topic and sets is_primary correctly", async () => {
     const mockFetch = vi.fn(async () => {

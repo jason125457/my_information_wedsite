@@ -15,6 +15,7 @@ Discovery, weekly review, and LINE conversational features are deferred to later
 - Database-backed For You, Saved, Read Later, and History views
 - Public read-only Feed and Digest access; sign-in is optional for personal actions
 - Idempotent 22:00 Taipei Daily Digest generation and notification-only LINE push
+- Authenticated `/settings/jobs` history for ingestion and Digest results, with source-level errors
 - Vitest for authorization and migration-contract tests
 - Vercel as the target deployment platform
 
@@ -111,6 +112,6 @@ The production ingestion pipeline runs via `GET|POST /api/cron/ingest`, protecte
 
 Idempotency is strictly guaranteed: re-running ingestion or encountering duplicate URLs skips redundant processing without inserting duplicate records or inflating stories.
 
-AI processing requires `OPENAI_API_KEY` and model IDs in `OPENAI_MODEL_FAST`, `OPENAI_MODEL_REASONING`, and `OPENAI_MODEL_SEARCH`. The application does not hardcode model versions. Classification and summarization use the fast model; only ambiguous event deduplication uses the reasoning model. Responses use strict structured output validation and `store: false`.
+AI ingestion requires `OPENAI_API_KEY`, `OPENAI_MODEL_FAST`, and `OPENAI_MODEL_REASONING`; `OPENAI_MODEL_SEARCH` is reserved for Discovery. The application does not hardcode model versions. Classification and summarization use the fast model; only ambiguous event deduplication uses the reasoning model. Responses use strict structured output validation and `store: false`. If the ingestion credentials are absent, the scheduled job records a partial/skipped result without fetching sources or claiming new content.
 
 For Daily Digest deployment, set `CRON_SECRET`, `APP_URL`, `LINE_CHANNEL_ACCESS_TOKEN`, and `LINE_TARGET_USER_ID`. Vercel calls the protected route at `14:00 UTC`, which is `22:00 Asia/Taipei`. A LINE failure records a partial job but does not remove the completed Digest. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md), [PRODUCT.md](./PRODUCT.md), and [ARCHITECTURE.md](./ARCHITECTURE.md) for the remaining sequence and constraints.

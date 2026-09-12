@@ -14,6 +14,13 @@ export function getAIModelConfig(environment: Environment = process.env): AIMode
   };
 }
 
+export function getIngestionModelConfig(environment: Environment = process.env): Pick<AIModelConfig, "fast" | "reasoning"> {
+  return {
+    fast: requireValue(environment.OPENAI_MODEL_FAST, "OPENAI_MODEL_FAST"),
+    reasoning: requireValue(environment.OPENAI_MODEL_REASONING, "OPENAI_MODEL_REASONING"),
+  };
+}
+
 export function getOpenAIApiKey(environment: Environment = process.env) {
   return requireValue(environment.OPENAI_API_KEY, "OPENAI_API_KEY");
 }

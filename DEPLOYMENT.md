@@ -53,3 +53,5 @@ Verify:
 6. The Vercel deployment contains no `.env` file or service-role key in client bundles.
 
 LINE is optional. If it is not configured, Digest generation succeeds and the job is marked partial. A failed LINE push never deletes a completed Digest.
+
+The two-hour ingestion schedule requires OpenAI API credentials and the fast/reasoning model IDs. Until they are configured, it records a partial job and skips source fetching; it does not publish unreviewed items. Once the optional single-user login is configured, `/settings/jobs` shows recent job outcomes and source errors. `OPENAI_MODEL_SEARCH` is not required for known-source ingestion.

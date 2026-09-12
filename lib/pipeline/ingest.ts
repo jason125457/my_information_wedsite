@@ -1,4 +1,4 @@
-import { getAIModelConfig, getOpenAIApiKey } from "@/lib/ai/config";
+import { getIngestionModelConfig, getOpenAIApiKey } from "@/lib/ai/config";
 import { OpenAIResponsesProvider } from "@/lib/ai/provider";
 import { StoryAIEditor } from "@/lib/ai/story-editor";
 import {
@@ -153,6 +153,28 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
       };
     }
 
+    // Do not fetch sources on a schedule when the editor cannot process them.
+    // An injected editor keeps tests and controlled backfills independent of production secrets.
+    if (!options.editor) {
+      try {
+        getOpenAIApiKey();
+        getIngestionModelConfig();
+      } catch {
+        const warning = "AI ingestion is not configured. Set OPENAI_API_KEY, OPENAI_MODEL_FAST, and OPENAI_MODEL_REASONING.";
+        const totals = computeTotals(statsBySource, 0);
+        await finishJobRun(supabase, job.id, "partial", 0, statsBySource, totals, startTime, warning);
+        return {
+          jobId: job.id,
+          status: "partial",
+          itemsProcessed: 0,
+          sources: Array.from(statsBySource.values()),
+          totals,
+          durationMs: Date.now() - startTime,
+          warning,
+        };
+      }
+    }
+
     // 3. Prepare collectors with failure isolation
     const collectorsToRun: Collector[] = [];
     for (const source of sources) {
@@ -260,7 +282,7 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     let editor = options.editor;
     if (!editor) {
       const apiKey = getOpenAIApiKey();
-      const models = getAIModelConfig();
+      const models = getIngestionModelConfig();
       const provider = new OpenAIResponsesProvider(apiKey);
       editor = new StoryAIEditor(provider, models);
     }
