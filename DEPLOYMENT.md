@@ -50,6 +50,17 @@ Then run **Actions → Scheduled jobs → Run workflow** with `ingest` once to f
 
 ## 4. Cloudflare Workers (web app)
 
+**Current production setup (2026-10-23):** Worker `personal-feed` on the custom domain `www.shuns.site` (declared in `wrangler.jsonc`), deployed with wrangler from a local checkout. Worker secrets: `SUPABASE_SERVICE_ROLE_KEY`, `ALLOWED_EMAIL`. Supabase Auth `site_url` and redirect URLs are managed in `supabase/config.toml` (`npx supabase config push`).
+
+To redeploy from a local checkout, build with only the public Supabase values in the environment, so no server secret from `.env.local` can be bundled:
+
+```powershell
+npx wrangler login
+npm run deploy
+```
+
+Alternative (automatic deploys on push to `main`), not yet set up:
+
 Use **Workers & Pages → Create → Import a repository** and pick this GitHub repository (Workers Builds). Settings:
 
 - Build command: `npx opennextjs-cloudflare build`
