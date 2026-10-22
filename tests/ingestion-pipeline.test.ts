@@ -1,16 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { isAuthorizedCronRequest } from "@/lib/cron/authorize";
 import { StoryAIEditor } from "@/lib/ai/story-editor";
 import type { Classification, StorySummary } from "@/lib/ai/schemas";
-import type { StructuredAIProvider, StructuredGenerationRequest } from "@/lib/ai/provider";
 import {
   createCollectorFromSource,
   ingestSources,
   type IngestOptions,
 } from "@/lib/pipeline/ingest";
 import type { Database } from "@/lib/supabase/database.types";
-import { GET, POST } from "@/app/api/cron/ingest/route";
+import { createBatchProvider } from "./helpers/batch-provider";
 
 type SourceRow = Database["public"]["Tables"]["sources"]["Row"];
 type RawItemRow = Database["public"]["Tables"]["raw_items"]["Row"];
@@ -37,26 +35,12 @@ function createMockEditor(): StoryAIEditor {
     why_recommended: "Directly relates to your AI interests.",
   };
 
-  const provider: StructuredAIProvider = {
-    async generate<T>(request: StructuredGenerationRequest<T>) {
-      if (request.schemaName === "story_classification") {
-        return request.schema.parse(defaultClassification);
-      }
-      if (request.schemaName === "story_summary") {
-        return request.schema.parse(defaultSummary);
-      }
-      if (request.schemaName === "duplicate_decision") {
-        return request.schema.parse({
-          same_event: false,
-          confidence: 0.9,
-          reason: "Different events.",
-        });
-      }
-      throw new Error(`Unknown schema: ${request.schemaName}`);
-    },
-  };
+  const provider = createBatchProvider({
+    classify: () => defaultClassification,
+    summarize: () => defaultSummary,
+  });
 
-  return new StoryAIEditor(provider, { fast: "fast-model", reasoning: "reasoning-model" });
+  return new StoryAIEditor(provider, { fast: "fast-model", quality: "quality-model" });
 }
 
 interface MockDatabaseState {
@@ -248,28 +232,6 @@ const mockRssXml = `
   </rss>
 `;
 
-describe("Cron authentication", () => {
-  it("rejects unauthorized GET and POST requests", async () => {
-    const unauthReq = new Request("https://example.com/api/cron/ingest", { method: "GET" });
-    const getRes = await GET(unauthReq);
-    expect(getRes.status).toBe(401);
-
-    const postReq = new Request("https://example.com/api/cron/ingest", {
-      method: "POST",
-      headers: { Authorization: "Bearer wrong-secret" },
-    });
-    const postRes = await POST(postReq);
-    expect(postRes.status).toBe(401);
-  });
-
-  it("authenticates valid bearer token for cron", () => {
-    const req = new Request("https://example.com/api/cron/ingest", {
-      headers: { Authorization: "Bearer test-secret-12345" },
-    });
-    expect(isAuthorizedCronRequest(req, "test-secret-12345")).toBe(true);
-  });
-});
-
 describe("Collector failure isolation", () => {
   it("continues ingestion when one source fails and records partial status", async () => {
     const mockFetch = vi.fn(async (input: string | URL | Request) => {
@@ -437,24 +399,61 @@ describe("createCollectorFromSource", () => {
     expect(collector.sourceType).toBe("hacker_news");
     expect(collector.sourceId).toBe("hn-1");
   });
+});
 
-  it("handles missing credentials for Reddit gracefully by throwing an error in factory", () => {
-    expect(() =>
-      createCollectorFromSource(
-        {
-          id: "reddit-1",
-          name: "r/technology",
-          type: "reddit",
-          url: "https://reddit.com/r/technology",
-          reliability_type: "community",
-          primary_topic_id: null,
-          is_discovery: false,
-          is_active: true,
-          config: {},
-          created_at: new Date().toISOString(),
-        },
-        "technology",
-      ),
-    ).toThrow("Reddit OAuth credentials");
+describe("Per-run candidate cap", () => {
+  function feedXml(prefix: string, count: number) {
+    const items = Array.from(
+      { length: count },
+      (_, i) => `
+        <item>
+          <guid>${prefix}-${i}</guid>
+          <title>${prefix} distinct headline number ${i} about topic ${prefix}${i}</title>
+          <link>https://${prefix}.example.com/posts/${i}</link>
+          <pubDate>${new Date().toUTCString()}</pubDate>
+        </item>`,
+    ).join("");
+    return `<rss version="2.0"><channel>${items}</channel></rss>`;
+  }
+
+  function source(id: string, url: string): SourceRow {
+    return {
+      id,
+      name: id,
+      type: "rss",
+      url,
+      reliability_type: "official",
+      primary_topic_id: "topic-ai",
+      is_discovery: false,
+      is_active: true,
+      config: {},
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  it("shares the cap across sources and leaves the overflow for a later run", async () => {
+    const mockFetch = vi.fn(async (input: string | URL | Request) => {
+      const busy = String(input).includes("busy.example.com");
+      return new Response(busy ? feedXml("busy", 10) : feedXml("quiet", 2), {
+        status: 200,
+        headers: { "Content-Type": "application/xml" },
+      });
+    });
+    const mockSupabase = createMockSupabase({
+      sources: [
+        source("source-busy", "https://busy.example.com/rss.xml"),
+        source("source-quiet", "https://quiet.example.com/rss.xml"),
+      ],
+    });
+
+    await ingestSources({
+      supabase: mockSupabase as unknown as IngestOptions["supabase"],
+      editor: createMockEditor(),
+      fetchImplementation: mockFetch as typeof fetch,
+      maxTotalCandidates: 4,
+    });
+
+    const persisted = mockSupabase.state.rawItems.map((item) => item.source_id).sort();
+    expect(persisted).toEqual(["source-busy", "source-busy", "source-quiet", "source-quiet"]);
   });
 });

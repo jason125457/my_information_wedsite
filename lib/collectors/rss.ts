@@ -6,6 +6,7 @@ import type {
   CollectorContext,
   ContentTopic,
   NormalizedCandidate,
+  SourceType,
 } from "@/lib/collectors/types";
 import { asPositiveInteger, cleanText, normalizeUrl, toIsoDate } from "@/lib/collectors/utils";
 
@@ -13,6 +14,8 @@ interface RssCollectorOptions {
   sourceId: string;
   sourceName: string;
   feedUrl: string;
+  /** Feeds can stand in for other source types (Reddit, YouTube) without their APIs. */
+  sourceType?: SourceType;
   topic: ContentTopic;
   isDiscovery?: boolean;
   maxItems?: number;
@@ -32,7 +35,7 @@ interface RssCollectedItem {
 type XmlRecord = Record<string, unknown>;
 
 export class RssCollector implements Collector<RssCollectedItem> {
-  readonly sourceType = "rss" as const;
+  readonly sourceType: SourceType;
   readonly sourceId: string;
   readonly sourceName: string;
 
@@ -45,6 +48,7 @@ export class RssCollector implements Collector<RssCollectedItem> {
   constructor(options: RssCollectorOptions) {
     this.sourceId = options.sourceId;
     this.sourceName = options.sourceName;
+    this.sourceType = options.sourceType ?? "rss";
     this.feedUrl = normalizeUrl(options.feedUrl);
     this.topic = options.topic;
     this.isDiscovery = options.isDiscovery ?? false;
@@ -109,7 +113,12 @@ export class RssCollector implements Collector<RssCollectedItem> {
       title: cleanText(textValue(item.title), 300),
       url: linkValue(item.link),
       excerpt: cleanText(
-        textValue(item.description) ?? textValue(item.summary) ?? textValue(item["content:encoded"]),
+        textValue(item.description) ??
+          textValue(item.summary) ??
+          textValue(item["content:encoded"]) ??
+          // Atom <content> (Reddit) and <media:group><media:description> (YouTube)
+          textValue(item.content) ??
+          textValue(asRecord(item["media:group"])?.["media:description"]),
       ),
       publishedAt: toIsoDate(
         textValue(item.pubDate) ?? textValue(item.published) ?? textValue(item.updated),

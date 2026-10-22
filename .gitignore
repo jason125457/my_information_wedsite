@@ -35,3 +35,10 @@ Thumbs.db
 # TypeScript and local certificates
 *.tsbuildinfo
 *.pem
+
+# Cloudflare / OpenNext
+.open-next/
+.wrangler/
+.dev.vars
+.dev.vars.*
+cloudflare-env.d.ts

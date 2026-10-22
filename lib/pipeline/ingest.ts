@@ -1,12 +1,11 @@
-import { getAIModelConfig, getOpenAIApiKey } from "@/lib/ai/config";
-import { OpenAIResponsesProvider } from "@/lib/ai/provider";
+import { getAIModelConfig, getGeminiApiKey, getGeminiMinIntervalMs } from "@/lib/ai/config";
+import { GeminiProvider } from "@/lib/ai/provider";
 import { StoryAIEditor } from "@/lib/ai/story-editor";
 import {
   HackerNewsCollector,
-  RedditCollector,
   RssCollector,
   runCollectors,
-  YouTubeCollector,
+  runCollectorsSequentially,
   type Collector,
   type ContentTopic,
   type NormalizedCandidate,
@@ -63,6 +62,8 @@ export interface IngestOptions {
   minimumScore?: number;
   maxCandidatesPerSource?: number;
   maxTotalCandidates?: number;
+  /** Pause between Reddit feed requests; Reddit throttles unauthenticated bursts. */
+  redditDelayMs?: number;
 }
 
 interface CandidateChoice extends SourceChoice {
@@ -169,7 +170,11 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     }
 
     // 4. Run collectors
-    const collectorResults = await runCollectors(collectorsToRun);
+    const redditCollectors = collectorsToRun.filter((c) => c.sourceType === "reddit");
+    const collectorResults = [
+      ...(await runCollectors(collectorsToRun.filter((c) => c.sourceType !== "reddit"))),
+      ...(await runCollectorsSequentially(redditCollectors, options.redditDelayMs ?? 10_000)),
+    ];
     const allCandidates: NormalizedCandidate[] = [];
 
     for (const result of collectorResults) {
@@ -217,7 +222,7 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
       }
     }
 
-    const candidatesToProcess: NormalizedCandidate[] = [];
+    const novelCandidates: NormalizedCandidate[] = [];
     for (const candidate of prefiltered.accepted) {
       const isDuplicateUrl = existingCanonicalUrls.has(candidate.canonicalUrl);
       const isDuplicateExternal =
@@ -232,8 +237,16 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
         continue;
       }
 
-      candidatesToProcess.push(candidate);
+      novelCandidates.push(candidate);
     }
+
+    // Cap AI work per run, taking candidates round-robin across sources so one
+    // busy feed cannot crowd out the rest. Anything over the cap is not
+    // persisted and is picked up again on a later run.
+    const candidatesToProcess = interleaveBySource(novelCandidates).slice(
+      0,
+      options.maxTotalCandidates ?? 150,
+    );
 
     // If all candidates are duplicates or filtered out, end early without calling AI
     if (candidatesToProcess.length === 0) {
@@ -259,9 +272,10 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     // 7. AI processing pipeline
     let editor = options.editor;
     if (!editor) {
-      const apiKey = getOpenAIApiKey();
+      const provider = new GeminiProvider(getGeminiApiKey(), {
+        minIntervalMs: getGeminiMinIntervalMs(),
+      });
       const models = getAIModelConfig();
-      const provider = new OpenAIResponsesProvider(apiKey);
       editor = new StoryAIEditor(provider, models);
     }
 
@@ -283,9 +297,16 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     }
 
     // 8. Database persistence
-    // 8a. Persist all processed raw_items with upsert on canonical_url
+    // 8a. Persist processed raw_items with upsert on canonical_url. Candidates
+    // whose AI step failed (e.g. quota exhausted) are left out so the next run
+    // retries them instead of treating them as already-seen duplicates.
+    const failedKeys = new Set(
+      processingResult.failures.map((f) => `${f.sourceId}:${f.externalId}`),
+    );
     const rawItemsMap = new Map<string, string>(); // canonicalUrl -> raw_item_id
-    const rawPayload = candidatesToProcess.map((c) => ({
+    const rawPayload = candidatesToProcess
+      .filter((c) => !failedKeys.has(`${c.sourceId}:${c.externalId}`))
+      .map((c) => ({
       source_id: c.sourceId,
       external_id: c.externalId,
       url: c.url,
@@ -456,42 +477,34 @@ export function createCollectorFromSource(
     }
 
     case "reddit": {
+      // Public subreddit RSS feed: no OAuth application or API key required.
+      // "a+b+c" combines several subreddits into one request (multireddit).
       const subreddit =
         (typeof config.subreddit === "string" && config.subreddit) ||
-        source.url.match(/\/r\/([A-Za-z0-9_]+)/i)?.[1] ||
+        source.url.match(/\/r\/([A-Za-z0-9_+]+)/i)?.[1] ||
         "";
-      if (!subreddit) {
+      if (!/^[A-Za-z0-9_]{2,21}(\+[A-Za-z0-9_]{2,21})*$/.test(subreddit)) {
         throw new Error(`Reddit source "${source.name}" has no valid subreddit configured.`);
       }
+      const listing = typeof config.listing === "string" ? config.listing : "top";
+      const period = typeof config.period === "string" ? config.period : "day";
+      const feedUrl = new URL(`https://www.reddit.com/r/${subreddit}/${listing}/.rss`);
+      if (listing === "top") feedUrl.searchParams.set("t", period);
 
-      const clientId = process.env.REDDIT_CLIENT_ID;
-      const clientSecret = process.env.REDDIT_CLIENT_SECRET;
-      const userAgent = process.env.REDDIT_USER_AGENT || "personal-feed:ingest:v1";
-
-      if (!clientId || !clientSecret) {
-        throw new Error("Reddit OAuth credentials (REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET) are missing.");
-      }
-
-      const listing = (typeof config.listing === "string" ? config.listing : "hot") as
-        | "hot"
-        | "new"
-        | "top";
-
-      return new RedditCollector({
+      return new RssCollector({
         sourceId: source.id,
         sourceName: source.name,
-        subreddit,
-        clientId,
-        clientSecret,
-        userAgent,
-        listing,
+        sourceType: "reddit",
+        feedUrl: feedUrl.toString(),
         topic,
         isDiscovery: source.is_discovery,
+        maxItems: 25,
         fetchImplementation,
       });
     }
 
     case "youtube": {
+      // Public channel uploads feed: no YouTube Data API key required.
       const channelId =
         (typeof config.channelId === "string" && config.channelId) ||
         source.url.match(/\/channel\/([A-Za-z0-9_-]+)/)?.[1] ||
@@ -500,22 +513,14 @@ export function createCollectorFromSource(
         throw new Error(`YouTube source "${source.name}" has no valid channelId configured.`);
       }
 
-      const apiKey = process.env.YOUTUBE_API_KEY;
-      if (!apiKey) {
-        throw new Error("YouTube API key (YOUTUBE_API_KEY) is missing.");
-      }
-
-      const uploadsPlaylistId =
-        typeof config.uploadsPlaylistId === "string" ? config.uploadsPlaylistId : undefined;
-
-      return new YouTubeCollector({
+      return new RssCollector({
         sourceId: source.id,
         sourceName: source.name,
-        channelId,
-        apiKey,
+        sourceType: "youtube",
+        feedUrl: `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(channelId)}`,
         topic,
-        uploadsPlaylistId,
         isDiscovery: source.is_discovery,
+        maxItems: 15,
         fetchImplementation,
       });
     }
@@ -523,6 +528,23 @@ export function createCollectorFromSource(
     default:
       throw new Error(`Unsupported source type: ${source.type}`);
   }
+}
+
+function interleaveBySource(candidates: NormalizedCandidate[]) {
+  const queues = new Map<string, NormalizedCandidate[]>();
+  for (const candidate of candidates) {
+    const queue = queues.get(candidate.sourceId) ?? [];
+    queue.push(candidate);
+    queues.set(candidate.sourceId, queue);
+  }
+
+  const interleaved: NormalizedCandidate[] = [];
+  for (let round = 0; interleaved.length < candidates.length; round += 1) {
+    for (const queue of queues.values()) {
+      if (round < queue.length) interleaved.push(queue[round]);
+    }
+  }
+  return interleaved;
 }
 
 function computeTotals(

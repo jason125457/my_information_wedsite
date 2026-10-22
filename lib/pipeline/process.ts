@@ -1,10 +1,10 @@
+import { GeminiDailyQuotaError } from "@/lib/ai/provider";
 import type { Classification, StorySummary } from "@/lib/ai/schemas";
 import type { StoryAIEditor } from "@/lib/ai/story-editor";
 import type { ContentTopic, NormalizedCandidate } from "@/lib/collectors/types";
 import { compareCandidates } from "@/lib/dedupe";
 import { calculateRanking, type FeedbackSignals, type RankingResult } from "@/lib/ranking";
 import { prefilterCandidates, type PrefilterRejection } from "@/lib/pipeline/prefilter";
-import { mapConcurrent } from "@/lib/pipeline/concurrency";
 
 export const defaultTopicWeights: Record<ContentTopic, number> = {
   ai: 5,
@@ -47,8 +47,10 @@ export interface ProcessingOptions {
   now?: Date;
   topicWeights?: Partial<Record<ContentTopic, number>>;
   feedbackFor?: (candidate: NormalizedCandidate) => FeedbackSignals;
-  classificationConcurrency?: number;
-  summaryConcurrency?: number;
+  /** Candidates per classification request (one Gemini call per batch). */
+  classificationBatchSize?: number;
+  /** Stories per summary request. */
+  summaryBatchSize?: number;
 }
 
 export async function processCandidates(
@@ -58,46 +60,41 @@ export async function processCandidates(
 ): Promise<ProcessingResult> {
   const maximum = clampInteger(options.maxCandidates ?? 150, 1, 500);
   const minimumScore = clamp(options.minimumScore ?? 55, 0, 100);
-  const classificationConcurrency = Math.max(1, options.classificationConcurrency ?? 5);
-  const summaryConcurrency = Math.max(1, options.summaryConcurrency ?? 4);
+  const classificationBatchSize = clampInteger(options.classificationBatchSize ?? 25, 1, 50);
+  const summaryBatchSize = clampInteger(options.summaryBatchSize ?? 8, 1, 20);
 
   const prefiltered = prefilterCandidates(candidates.slice(0, maximum), options.now);
   const failures: ProcessingFailure[] = [];
   const ranked: RankedCandidate[] = [];
+  // Once the daily quota is gone every further call fails, so stop calling.
+  let quotaError: GeminiDailyQuotaError | null = null;
 
-  const classificationResults = await mapConcurrent(
-    prefiltered.accepted,
-    classificationConcurrency,
-    async (candidate) => {
-      try {
-        const classification = await editor.classify(candidate);
-        const primaryTopic = classification.topics[0] ?? candidate.topic;
-        const ranking = calculateRanking({
-          classification,
-          primaryTopic,
-          topicWeight: options.topicWeights?.[primaryTopic] ?? defaultTopicWeights[primaryTopic],
-          feedback: options.feedbackFor?.(candidate),
-        });
-        return { success: true as const, candidate, classification, ranking };
-      } catch (error) {
-        return {
-          success: false as const,
-          failure: failure(candidate, "classification", error),
-        };
-      }
-    },
-  );
-
-  for (const item of classificationResults) {
-    if (item.success) {
-      ranked.push({
-        candidate: item.candidate,
-        classification: item.classification,
-        ranking: item.ranking,
-      });
-    } else {
-      failures.push(item.failure);
+  for (const batch of chunk(prefiltered.accepted, classificationBatchSize)) {
+    let classifications: Array<Classification | null>;
+    try {
+      if (quotaError) throw quotaError;
+      classifications = await editor.classifyMany(batch);
+    } catch (error) {
+      if (error instanceof GeminiDailyQuotaError) quotaError = error;
+      failures.push(...batch.map((candidate) => failure(candidate, "classification", error)));
+      continue;
     }
+
+    batch.forEach((candidate, index) => {
+      const classification = classifications[index];
+      if (!classification) {
+        failures.push(failure(candidate, "classification", new Error("Missing from batch output.")));
+        return;
+      }
+      const primaryTopic = classification.topics[0] ?? candidate.topic;
+      const ranking = calculateRanking({
+        classification,
+        primaryTopic,
+        topicWeight: options.topicWeights?.[primaryTopic] ?? defaultTopicWeights[primaryTopic],
+        feedback: options.feedbackFor?.(candidate),
+      });
+      ranked.push({ candidate, classification, ranking });
+    });
   }
 
   const aboveThreshold = ranked
@@ -114,7 +111,7 @@ export async function processCandidates(
         matched = true;
         break;
       }
-      if (comparison.requiresAIReview) {
+      if (comparison.requiresAIReview && !quotaError) {
         try {
           const decision = await editor.decideDuplicate(group.candidate, item.candidate);
           if (decision.same_event) {
@@ -123,6 +120,7 @@ export async function processCandidates(
             break;
           }
         } catch (error) {
+          if (error instanceof GeminiDailyQuotaError) quotaError = error;
           failures.push(failure(item.candidate, "deduplication", error));
         }
       }
@@ -131,34 +129,25 @@ export async function processCandidates(
   }
 
   const stories: StoryDraft[] = [];
-  const summaryResults = await mapConcurrent(
-    groups,
-    summaryConcurrency,
-    async (group) => {
-      try {
-        const summary = await editor.summarize(group.candidate, group.classification);
-        return {
-          success: true as const,
-          story: {
-            ...group,
-            summary,
-          },
-        };
-      } catch (error) {
-        return {
-          success: false as const,
-          failure: failure(group.candidate, "summary", error),
-        };
-      }
-    },
-  );
-
-  for (const item of summaryResults) {
-    if (item.success) {
-      stories.push(item.story);
-    } else {
-      failures.push(item.failure);
+  for (const batch of chunk(groups, summaryBatchSize)) {
+    let summaries: Array<StorySummary | null>;
+    try {
+      if (quotaError) throw quotaError;
+      summaries = await editor.summarizeMany(batch);
+    } catch (error) {
+      if (error instanceof GeminiDailyQuotaError) quotaError = error;
+      failures.push(...batch.map((group) => failure(group.candidate, "summary", error)));
+      continue;
     }
+
+    batch.forEach((group, index) => {
+      const summary = summaries[index];
+      if (summary) {
+        stories.push({ ...group, summary });
+      } else {
+        failures.push(failure(group.candidate, "summary", new Error("Missing from batch output.")));
+      }
+    });
   }
 
   return {
@@ -180,6 +169,14 @@ function failure(
     stage,
     errorMessage: error instanceof Error ? error.message : "Unknown AI processing error.",
   };
+}
+
+function chunk<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function clampInteger(value: number, minimum: number, maximum: number) {

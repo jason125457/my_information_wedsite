@@ -6,17 +6,18 @@ Discovery, weekly review, and LINE conversational features are deferred to later
 
 ## Stack
 
-- Next.js 16, TypeScript, and App Router
+Everything runs on free tiers with no payment method attached (see [DEPLOYMENT.md](./DEPLOYMENT.md)).
+
+- Next.js 16, TypeScript, and App Router, deployed to Cloudflare Workers with `@opennextjs/cloudflare`
 - Tailwind CSS 4 with a shadcn/ui-compatible component structure
 - Supabase PostgreSQL, Auth, and SSR clients
-- Official/API-first RSS, Hacker News, Reddit OAuth, and YouTube collectors
-- OpenAI Responses API structured outputs with Zod validation
+- Key-free collectors: RSS/Atom, Hacker News API, Reddit public RSS, YouTube channel RSS
+- Google Gemini API (free AI Studio key) with batched structured JSON output and Zod validation
 - Deterministic topic-aware ranking, feedback adjustment, and first-layer deduplication
 - Database-backed For You, Saved, Read Later, and History views
 - Public read-only Feed and Digest access; sign-in is optional for personal actions
-- Idempotent 22:00 Taipei Daily Digest generation and notification-only LINE push
-- Vitest for authorization and migration-contract tests
-- Vercel as the target deployment platform
+- Scheduled ingestion (every 3 hours) and 22:00 Taipei Daily Digest in GitHub Actions; optional LINE push
+- Vitest for authorization, collectors, AI pipeline, and migration-contract tests
 
 ## Prerequisites
 
@@ -91,26 +92,25 @@ The Vitest suite checks the email allowlist and safe callback paths, confirms ev
 
 Pull requests also run a PostgreSQL 17 integration job in GitHub Actions. It applies every migration in order to a clean database and verifies anonymous, unprovisioned authenticated, owner, and service-role RLS behavior, including persistent story state, with `tests/database/rls.sql`.
 
+## Running the jobs locally
+
+With Supabase and `GEMINI_API_KEY` set in `.env.local`:
+
+```powershell
+npm run job:ingest
+npm run job:digest
+```
+
+These are the same scripts GitHub Actions runs on schedule (`.github/workflows/jobs.yml`).
+
+## Previewing the Cloudflare build
+
+```powershell
+npm run preview
+```
+
+This builds with OpenNext and serves the Worker locally in `workerd`, the Cloudflare runtime.
+
 ## Production configuration
 
-Create a Supabase project, apply the migration with the Supabase CLI, create only the allowed Auth user, and keep public email signups disabled. Configure the values from `.env.example` in Vercel, including an HTTPS `APP_URL`, and add `${APP_URL}/auth/callback` to the Supabase Auth redirect allowlist.
-
-Reddit collection requires an approved official API application and the three `REDDIT_*` values in `.env.local`. YouTube collection requires `YOUTUBE_API_KEY`. RSS and Hacker News do not require credentials. Collector requests are server-side only; never expose API credentials in browser code.
-
-Collectors share a common contract under `lib/collectors/`, return normalized candidates, and accept an injectable fetch implementation for deterministic tests. A failed source is isolated from the remaining collection run.
-
-The production ingestion pipeline runs via `GET|POST /api/cron/ingest`, protected by `CRON_SECRET` and scheduled every 2 hours in Vercel (`0 */2 * * *`). The pipeline:
-1. Loads active sources from the database (`sources` table).
-2. Runs collectors concurrently with per-source error isolation.
-3. Applies deterministic in-memory prefiltering (`prefilterCandidates`).
-4. Checks existing canonical URLs and external IDs against `raw_items` in the database to filter out duplicates before AI processing (eliminating wasted API costs).
-5. Passes novel candidates through cheap AI classification, topic ranking, and event deduplication.
-6. Generates grounded summaries for worthwhile stories.
-7. Persists new candidates to `raw_items` (upsert on `canonical_url`), creates `stories`, and links primary and secondary sources in `story_sources`.
-8. Records execution metrics (fetched, filtered, duplicate, processed, and inserted counts, timings, and status) in `job_runs`.
-
-Idempotency is strictly guaranteed: re-running ingestion or encountering duplicate URLs skips redundant processing without inserting duplicate records or inflating stories.
-
-AI processing requires `OPENAI_API_KEY` and model IDs in `OPENAI_MODEL_FAST`, `OPENAI_MODEL_REASONING`, and `OPENAI_MODEL_SEARCH`. The application does not hardcode model versions. Classification and summarization use the fast model; only ambiguous event deduplication uses the reasoning model. Responses use strict structured output validation and `store: false`.
-
-For Daily Digest deployment, set `CRON_SECRET`, `APP_URL`, `LINE_CHANNEL_ACCESS_TOKEN`, and `LINE_TARGET_USER_ID`. Vercel calls the protected route at `14:00 UTC`, which is `22:00 Asia/Taipei`. A LINE failure records a partial job but does not remove the completed Digest. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md), [PRODUCT.md](./PRODUCT.md), and [ARCHITECTURE.md](./ARCHITECTURE.md) for the remaining sequence and constraints.
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for Supabase, the Gemini key, GitHub Actions secrets, and Cloudflare Workers. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md), [PRODUCT.md](./PRODUCT.md), and [ARCHITECTURE.md](./ARCHITECTURE.md) for the remaining work and constraints.

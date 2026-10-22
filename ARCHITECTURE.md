@@ -26,7 +26,8 @@ Internet Sources
 - Next.js、TypeScript、App Router
 - Tailwind CSS、shadcn/ui
 - Server Actions 優先處理 UI mutations
-- Route Handlers 處理 cron 與外部整合
+- Route Handlers 處理外部整合（Auth callback 等）
+- 排程工作（ingestion、Daily Digest）以 `scripts/*.ts` 在 GitHub Actions 執行，不經 HTTP endpoint
 
 MVP 不建立獨立 backend service。
 
@@ -42,17 +43,29 @@ MVP 不建立獨立 backend service。
 
 ### Hosting and Scheduling
 
-- Vercel 部署 Next.js
-- Vercel Cron 觸發排程
+> 2026-10-22 決策：整個專案必須維持「完全免費、不綁信用卡」。因此：
+> - Web App 部署於 Cloudflare Workers（透過 `@opennextjs/cloudflare`），使用使用者在 Cloudflare 上的自有網域。不設定 R2 incremental cache，因為 R2 需要付款方式；所有頁面皆為動態渲染。
+> - Session refresh 使用 edge `middleware.ts`（而非 Next 16 的 Node.js `proxy.ts`），因為 OpenNext 對 Node.js middleware 的支援仍屬實驗性。
+> - 排程改由 GitHub Actions（`.github/workflows/jobs.yml`）執行，原因：Vercel Hobby 的 cron 每天只能執行一次，且 Cloudflare Workers 免費版每次請求的 CPU 時間太短，無法跑 AI pipeline。公開 repo 的 Actions 不限分鐘數，定期寫入也能避免 Supabase 免費專案因 7 天無活動被暫停。
+
+- Cloudflare Workers 部署 Next.js
+- GitHub Actions schedule 觸發排程
 - Cron 一律以 UTC 設定；Asia/Taipei 22:00 對應 UTC 14:00
 
 ## 3. AI Layer
 
-使用 OpenAI Responses API，模型名稱由環境變數提供，不在程式碼中寫死：
+> 2026-10-22 決策：由 OpenAI 改為 Google Gemini API（Google AI Studio 免費金鑰），以維持零成本。Google Cloud 專案不得啟用 billing，額度用完時只會暫時失敗，不會產生費用。
 
-- `OPENAI_MODEL_FAST`：分類、初步評分、短摘要、推薦原因、feedback interpretation
-- `OPENAI_MODEL_REASONING`：模糊事件去重、Daily Digest 最終排序、Weekly Review
-- `OPENAI_MODEL_SEARCH`：Web Search discovery
+使用 Gemini API（`@google/genai`）structured JSON output，模型名稱由環境變數提供，不在程式碼中寫死：
+
+- `GEMINI_MODEL_FAST`：批次分類與初步評分
+- `GEMINI_MODEL_QUALITY`：批次摘要、推薦原因、模糊事件去重
+
+免費額度的每日請求數很少，因此：
+- 分類一次送出最多 25 則、摘要一次 8 則（一個 batch 一次 request），結果以 `index` 對齊並逐筆 validation。
+- `GeminiProvider` 將請求序列化並保持最小間隔（`GEMINI_MIN_INTERVAL_MS`），429 per-minute 依建議時間重試，per-day 額度用完立即停止該次 run 的後續 AI 呼叫。
+- AI 處理失敗的 candidates 不寫入 `raw_items`，下一次 run 會重新嘗試。
+- 每次 run 最多處理 150 則，以 round-robin 方式在各來源間分配，避免單一來源佔滿額度。
 
 Discovery 搜尋結果必須保存 URL、Title、Source 與 citation metadata，UI 必須顯示清楚且可點擊的原始來源。
 
@@ -84,17 +97,17 @@ interface Collector {
 
 ### Reddit
 
-只使用 Reddit 官方 API／OAuth 或官方允許的平台能力，不繞過限制或登入。MVP 保存標題、permalink、subreddit、score、發布時間、必要短 excerpt 與 derived AI metadata，不長期保存大量全文或 comments。
+使用 Reddit 官方提供的公開 RSS feed（`/r/<sub>/<listing>/.rss`），不需 OAuth 應用程式。多個 subreddit 以 multireddit（`r/a+b+c`）合併為一次請求；Reddit 會對未認證的連續請求回應 429，因此 Reddit 來源依序抓取並間隔 10 秒。抓取失敗只影響該來源。MVP 保存標題、permalink、發布時間、必要短 excerpt 與 derived AI metadata，不長期保存大量全文或 comments。
 
 ### YouTube
 
-以 YouTube Data API 為主要來源，支援已知頻道新影片與主題探索。YouTube RSS 僅作低成本備援；不依賴 undocumented scraping。
+使用 YouTube 官方的頻道 uploads feed（`/feeds/videos.xml?channel_id=`），不需 YouTube Data API key。不依賴 undocumented scraping。
 
 ### News and Finance
 
 依序偏好官方 RSS／publisher RSS、正式 API、允許存取的公開網頁抽取。MVP 不建立大型新聞爬蟲。
 
-### OpenAI Web Search
+### Gemini Google Search grounding（尚未實作）
 
 用於 Discovery，包括新 AI 工具、樂團、攝影景點、文章與潛在優質來源。
 
@@ -284,21 +297,20 @@ Feed 不使用 infinite scroll，採 Load More 或分頁。
 
 ## 12. Route Handlers and Server Actions
 
-外部／排程 endpoints：
+排程工作不經 HTTP，由 GitHub Actions 直接執行：
 
-- `GET|POST /api/cron/ingest`
-- `GET|POST /api/cron/digest`
-- `GET|POST /api/cron/weekly`
-- `POST /api/line/webhook`
+- `npm run job:ingest`（`scripts/ingest.ts`）
+- `npm run job:digest`（`scripts/digest.ts`）
+- Weekly Review（尚未實作）
 
-Cron endpoints 必須驗證 `CRON_SECRET` 並具備 idempotency。UI 的 read、save、read-later 與 feedback mutation 優先使用 Server Actions；若需要公開 API，再增加對應 Route Handler。
+外部 endpoint：`POST /api/line/webhook`（尚未實作）。所有排程工作必須具備 idempotency。UI 的 read、save、read-later 與 feedback mutation 優先使用 Server Actions；若需要公開 API，再增加對應 Route Handler。
 
 ## 13. Scheduling
 
 | Job | Asia/Taipei | UTC cron |
 | --- | --- | --- |
-| Feed refresh | 每 2 小時 | `0 */2 * * *` |
-| Daily Digest | 每天 22:00 | `0 14 * * *` |
+| Feed refresh | 每 3 小時 | `23 */3 * * *` |
+| Daily Digest | 每天 22:07 | `7 14 * * *` |
 | Weekly Review | 週日 21:00 | `0 13 * * 0` |
 
 Daily Digest 流程：過去 24 小時 Stories → 移除 Not Interested → 套用 feedback → deduplicate → rank → 選出約 15～20 則 → 儲存 Digest → 推送 LINE。若只有 11 則達標，就只保存 11 則。
@@ -315,29 +327,7 @@ LINE 發送失敗要寫入 job log，但不回滾已成功產生的 Digest。
 
 ## 15. Environment Variables
 
-```dotenv
-OPENAI_API_KEY=
-OPENAI_MODEL_FAST=
-OPENAI_MODEL_REASONING=
-OPENAI_MODEL_SEARCH=
-
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-ALLOWED_EMAIL=
-
-YOUTUBE_API_KEY=
-REDDIT_CLIENT_ID=
-REDDIT_CLIENT_SECRET=
-REDDIT_USER_AGENT=
-
-LINE_CHANNEL_ACCESS_TOKEN=
-LINE_CHANNEL_SECRET=
-LINE_TARGET_USER_ID=
-
-APP_URL=
-CRON_SECRET=
-```
+見 `.env.example`。
 
 所有 secret 僅能在 server side 使用，不得傳送到 browser 或提交至 Git。
 
@@ -408,7 +398,7 @@ personal-feed/
 3. AI Pipeline：classify、rank、dedupe、summary
 4. Personal Feed：For You、topic pages、read state、read later、saved、feedback
 5. Digest：Daily Digest、LINE、cron
-6. Discovery：OpenAI Web Search 與約 20% exploration
+6. Discovery：Gemini Google Search grounding 與約 20% exploration
 7. Weekly Review：reading analytics、saved analytics、weekly AI summary
 
 ## 20. Architecture Principle

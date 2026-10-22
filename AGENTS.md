@@ -22,7 +22,7 @@ This is a single-user application. Do not build public registration, teams, soci
 
 ## Required Stack
 
-Use Next.js, TypeScript, App Router, Tailwind CSS, shadcn/ui, Supabase PostgreSQL, Supabase Auth, OpenAI Responses API, Vercel, and LINE Messaging API. Do not replace a major architecture component without documenting why in `ARCHITECTURE.md`.
+Use Next.js, TypeScript, App Router, Tailwind CSS, shadcn/ui, Supabase PostgreSQL, Supabase Auth, Google Gemini API, Cloudflare Workers (OpenNext), GitHub Actions for scheduled jobs, and LINE Messaging API. Everything must stay on free tiers with no payment method attached. Do not replace a major architecture component without documenting why in `ARCHITECTURE.md`.
 
 ## Implementation Strategy
 
@@ -60,10 +60,10 @@ Avoid storing full copyrighted articles by default. Store metadata, URL, short e
 
 Prefer official APIs:
 
-- Reddit: official API／OAuth
+- Reddit: official public RSS feeds (no OAuth app), fetched sequentially
 - Hacker News: official API
-- YouTube: YouTube Data API; RSS may be a low-cost fallback
-- OpenAI discovery: Responses API Web Search
+- YouTube: official channel uploads feed (no API key)
+- Discovery: Gemini Google Search grounding (not yet built)
 
 Do not introduce scraping workarounds to avoid an API.
 
@@ -115,7 +115,7 @@ Saved items must remain searchable by keyword, topic, tag, date, and source. Do 
 - Daily Digest: 22:00 Asia/Taipei
 - Weekly Review: Sunday evening Asia/Taipei
 
-Cron endpoints must verify `CRON_SECRET` and be idempotent. Running a job twice must not duplicate stories or digests.
+Scheduled jobs run as scripts in GitHub Actions (no public cron endpoints) and must be idempotent. Running a job twice must not duplicate stories or digests.
 
 LINE in MVP is notification-only. Do not build a conversational bot. The webhook may only support signature verification, platform verification, and initial user binding. Daily notifications link back to the Web App.
 
