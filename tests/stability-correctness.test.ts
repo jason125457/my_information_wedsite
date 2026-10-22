@@ -13,6 +13,7 @@ import {
 import type { NormalizedCandidate } from "@/lib/collectors/types";
 import type { Classification, StorySummary } from "@/lib/ai/schemas";
 import type { StoryAIEditor } from "@/lib/ai/story-editor";
+import { GeminiDailyQuotaError } from "@/lib/ai/provider";
 import type { createClient } from "@/lib/supabase/server";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
@@ -444,28 +445,35 @@ describe("AI Pipeline Bounded Concurrency", () => {
     expect(results).toEqual(items.map((i) => i * 2));
   });
 
-  it("processCandidates bounds classification (<=5) and summary (<=4) concurrency", async () => {
-    let activeClassification = 0;
-    let peakClassification = 0;
-    let activeSummary = 0;
-    let peakSummary = 0;
+  const batchClassification: Classification = {
+    topics: ["technology"],
+    interest_relevance: 4,
+    information_value: 4,
+    importance: 4,
+    freshness: 4,
+    discussion_popularity: 3,
+    discovery_value: 3,
+    content_type: "current",
+    fact_status: "official_confirmation",
+  };
 
-    const distinctTitles = [
-      "Quantum Computing Breakthrough in Superconductors",
-      "Global Semiconductor Supply Chain Outlook",
-      "Autonomous Drone Navigation Algorithms",
-      "PostgreSQL 17 Performance Features Announced",
-      "Next.js Architecture Patterns for High Traffic",
-      "Deep Learning Advances in Protein Folding",
-      "Cybersecurity Vulnerability Disclosed in Linux Kernel",
-      "Microservices vs Modular Monolith Architectural Debate",
-      "WebAssembly Compilation Pipeline Improvements",
-      "Rust Memory Safety Verification at Scale",
-      "Distributed Systems Consensus Protocols Revisited",
-      "Database Indexing Strategies for Read Heavy Workloads",
-    ];
+  const distinctTitles = [
+    "Quantum Computing Breakthrough in Superconductors",
+    "Global Semiconductor Supply Chain Outlook",
+    "Autonomous Drone Navigation Algorithms",
+    "PostgreSQL 17 Performance Features Announced",
+    "Next.js Architecture Patterns for High Traffic",
+    "Deep Learning Advances in Protein Folding",
+    "Cybersecurity Vulnerability Disclosed in Linux Kernel",
+    "Microservices vs Modular Monolith Architectural Debate",
+    "WebAssembly Compilation Pipeline Improvements",
+    "Rust Memory Safety Verification at Scale",
+    "Distributed Systems Consensus Protocols Revisited",
+    "Database Indexing Strategies for Read Heavy Workloads",
+  ];
 
-    const mockCandidates: NormalizedCandidate[] = distinctTitles.map((title, i) =>
+  function batchCandidates(count: number): NormalizedCandidate[] {
+    return distinctTitles.slice(0, count).map((title, i) =>
       createTestCandidate({
         sourceId: `source-${i}`,
         externalId: `ext-${i}`,
@@ -475,106 +483,95 @@ describe("AI Pipeline Bounded Concurrency", () => {
         topic: "technology",
       }),
     );
+  }
 
-    const mockEditor: StoryAIEditor = {
-      classify: async () => {
-        activeClassification += 1;
-        peakClassification = Math.max(peakClassification, activeClassification);
-        await new Promise((r) => setTimeout(r, 15));
-        activeClassification -= 1;
-        return {
-          topics: ["technology"],
-          interest_relevance: 4,
-          information_value: 4,
-          importance: 4,
-          freshness: 4,
-          discussion_popularity: 3,
-          discovery_value: 3,
-          content_type: "current",
-          fact_status: "official_confirmation",
-        } as Classification;
+  const summaryFor = (candidate: NormalizedCandidate): StorySummary => ({
+    title: `Summary of ${candidate.title}`,
+    summary: "Sentence 1. Sentence 2.",
+    why_recommended: "Relevant to technology.",
+  });
+
+  const fixedNow = new Date("2026-09-11T13:00:00Z");
+
+  it("processCandidates sends classification and summaries in bounded batches", async () => {
+    const classifyBatches: number[] = [];
+    const summaryBatches: number[] = [];
+
+    const mockEditor = {
+      classifyMany: async (batch: NormalizedCandidate[]) => {
+        classifyBatches.push(batch.length);
+        return batch.map(() => batchClassification);
       },
-      decideDuplicate: async () => {
-        return { same_event: false, confidence: 0.9, reason: "different" };
+      summarizeMany: async (batch: Array<{ candidate: NormalizedCandidate }>) => {
+        summaryBatches.push(batch.length);
+        return batch.map(({ candidate }) => summaryFor(candidate));
       },
-      summarize: async (candidate: NormalizedCandidate) => {
-        activeSummary += 1;
-        peakSummary = Math.max(peakSummary, activeSummary);
-        await new Promise((r) => setTimeout(r, 15));
-        activeSummary -= 1;
-        return {
-          title: `Summary of ${candidate.title}`,
-          summary: "Sentence 1. Sentence 2.",
-          why_recommended: "Relevant to technology.",
-        } as StorySummary;
-      },
+      decideDuplicate: async () => ({ same_event: false, confidence: 0.9, reason: "different" }),
     } as unknown as StoryAIEditor;
 
-    const result = await processCandidates(mockCandidates, mockEditor, {
+    const result = await processCandidates(batchCandidates(12), mockEditor, {
       minimumScore: 40,
+      now: fixedNow,
+      classificationBatchSize: 5,
+      summaryBatchSize: 4,
     });
 
-    expect(peakClassification).toBeLessThanOrEqual(5);
-    expect(peakSummary).toBeLessThanOrEqual(4);
+    expect(classifyBatches).toEqual([5, 5, 2]);
+    expect(summaryBatches).toEqual([4, 4, 4]);
     expect(result.stories).toHaveLength(12);
   });
 
-  it("preserves failure isolation during concurrent execution", async () => {
-    const failTitles = [
-      "Quantum Computing Breakthrough in Superconductors",
-      "Global Semiconductor Supply Chain Outlook",
-      "Autonomous Drone Navigation Algorithms",
-      "PostgreSQL 17 Performance Features Announced",
-      "Next.js Architecture Patterns for High Traffic",
-      "Deep Learning Advances in Protein Folding",
-    ];
-
-    const mockCandidates: NormalizedCandidate[] = failTitles.map((title, i) =>
-      createTestCandidate({
-        sourceId: `source-${i}`,
-        externalId: `ext-${i}`,
-        url: `https://example.com/fail-${i}`,
-        canonicalUrl: `https://example.com/fail-${i}`,
-        title,
-        topic: "technology",
-      }),
-    );
-
-    const mockEditor: StoryAIEditor = {
-      classify: async (candidate: NormalizedCandidate) => {
-        if (candidate.externalId === "ext-2") {
-          throw new Error("Simulated Gemini rate limit / parse error");
-        }
-        return {
-          topics: ["technology"],
-          interest_relevance: 4,
-          information_value: 4,
-          importance: 4,
-          freshness: 4,
-          discussion_popularity: 3,
-          discovery_value: 3,
-          content_type: "current",
-          fact_status: "official_confirmation",
-        } as Classification;
+  it("isolates a failed batch and items missing from a batch", async () => {
+    let call = 0;
+    const mockEditor = {
+      classifyMany: async (batch: NormalizedCandidate[]) => {
+        call += 1;
+        if (call === 1) throw new Error("Simulated Gemini parse error");
+        // Second batch: the model leaves out the middle item.
+        return batch.map((_, index) => (index === 1 ? null : batchClassification));
       },
+      summarizeMany: async (batch: Array<{ candidate: NormalizedCandidate }>) =>
+        batch.map(({ candidate }) => summaryFor(candidate)),
       decideDuplicate: async () => ({ same_event: false, confidence: 0.9, reason: "diff" }),
-      summarize: async (candidate: NormalizedCandidate) => ({
-        title: candidate.title,
-        summary: "Sent 1. Sent 2.",
-        why_recommended: "Why",
-      }),
     } as unknown as StoryAIEditor;
 
-    const result = await processCandidates(mockCandidates, mockEditor, { minimumScore: 40 });
+    const result = await processCandidates(batchCandidates(6), mockEditor, {
+      minimumScore: 40,
+      now: fixedNow,
+      classificationBatchSize: 3,
+    });
 
-    // 5 succeed, 1 fails
-    expect(result.stories).toHaveLength(5);
-    expect(result.failures).toHaveLength(1);
-    expect(result.failures[0].externalId).toBe("ext-2");
-    expect(result.failures[0].stage).toBe("classification");
-    expect(result.failures[0].errorMessage).toContain("Simulated Gemini rate limit");
-    expect(result.completedCandidates).toHaveLength(5);
-    expect(result.completedCandidates.some((candidate) => candidate.externalId === "ext-2")).toBe(false);
+    expect(result.stories).toHaveLength(2);
+    expect(result.failures.map((f) => f.externalId)).toEqual(["ext-0", "ext-1", "ext-2", "ext-4"]);
+    expect(result.failures.every((f) => f.stage === "classification")).toBe(true);
+    expect(result.failures[0].errorMessage).toContain("Simulated Gemini parse error");
+  });
+
+  it("stops calling the model once the daily quota is exhausted", async () => {
+    let classifyCalls = 0;
+    let summaryCalls = 0;
+    const mockEditor = {
+      classifyMany: async () => {
+        classifyCalls += 1;
+        throw new GeminiDailyQuotaError("GenerateRequestsPerDay exceeded");
+      },
+      summarizeMany: async () => {
+        summaryCalls += 1;
+        return [];
+      },
+      decideDuplicate: async () => ({ same_event: false, confidence: 0.9, reason: "diff" }),
+    } as unknown as StoryAIEditor;
+
+    const result = await processCandidates(batchCandidates(6), mockEditor, {
+      minimumScore: 40,
+      now: fixedNow,
+      classificationBatchSize: 2,
+    });
+
+    expect(classifyCalls).toBe(1);
+    expect(summaryCalls).toBe(0);
+    expect(result.failures).toHaveLength(6);
+    expect(result.stories).toHaveLength(0);
   });
 });
 

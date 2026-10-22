@@ -167,13 +167,13 @@ MVP 採 Loose Filtering Mode，每天目標為 15～20 則，但不為達到數�
 MVP 支援：
 
 - RSS／Atom 與官方 Blog
-- Reddit 官方 API
+- Reddit 官方公開 RSS
 - Hacker News 官方 API
-- YouTube Data API；RSS 可作低成本備援
+- YouTube 官方頻道 RSS
 - 主流新聞與財經媒體的官方 RSS／API
 - Bandcamp／音樂媒體
 - 台灣攝影 Blog／網站
-- Gemini Google Search grounding（Discovery，規劃中）
+- Gemini Google Search grounding（Discovery）
 
 第一版暫不處理 Threads、Instagram、TikTok 與 X。
 

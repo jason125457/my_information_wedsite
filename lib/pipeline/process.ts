@@ -1,10 +1,10 @@
+import { GeminiDailyQuotaError } from "@/lib/ai/provider";
 import type { Classification, StorySummary } from "@/lib/ai/schemas";
 import type { StoryAIEditor } from "@/lib/ai/story-editor";
 import type { ContentTopic, NormalizedCandidate } from "@/lib/collectors/types";
 import { compareCandidates } from "@/lib/dedupe";
 import { calculateRanking, type FeedbackSignals, type RankingResult } from "@/lib/ranking";
 import { prefilterCandidates, type PrefilterRejection } from "@/lib/pipeline/prefilter";
-import { mapConcurrent } from "@/lib/pipeline/concurrency";
 
 export const defaultTopicWeights: Record<ContentTopic, number> = {
   ai: 5,
@@ -36,7 +36,6 @@ export interface ProcessingFailure {
 
 export interface ProcessingResult {
   stories: StoryDraft[];
-  completedCandidates: NormalizedCandidate[];
   prefilterRejected: PrefilterRejection[];
   belowThresholdCount: number;
   failures: ProcessingFailure[];
@@ -48,11 +47,10 @@ export interface ProcessingOptions {
   now?: Date;
   topicWeights?: Partial<Record<ContentTopic, number>>;
   feedbackFor?: (candidate: NormalizedCandidate) => FeedbackSignals;
-  classificationConcurrency?: number;
-  summaryConcurrency?: number;
+  /** Candidates per classification request (one Gemini call per batch). */
   classificationBatchSize?: number;
-  maxSummaries?: number;
-  maxDedupeReviews?: number;
+  /** Stories per summary request. */
+  summaryBatchSize?: number;
 }
 
 export async function processCandidates(
@@ -61,64 +59,48 @@ export async function processCandidates(
   options: ProcessingOptions = {},
 ): Promise<ProcessingResult> {
   const maximum = clampInteger(options.maxCandidates ?? 150, 1, 500);
-  const minimumScore = clamp(options.minimumScore ?? 55, 0, 100);
-  const classificationConcurrency = Math.max(1, options.classificationConcurrency ?? 5);
-  const summaryConcurrency = Math.max(1, options.summaryConcurrency ?? 4);
+  const minimumScore = clamp(options.minimumScore ?? 70, 0, 100);
+  const classificationBatchSize = clampInteger(options.classificationBatchSize ?? 25, 1, 50);
+  const summaryBatchSize = clampInteger(options.summaryBatchSize ?? 8, 1, 20);
 
   const prefiltered = prefilterCandidates(candidates.slice(0, maximum), options.now);
   const failures: ProcessingFailure[] = [];
   const ranked: RankedCandidate[] = [];
+  // Once the daily quota is gone every further call fails, so stop calling.
+  let quotaError: GeminiDailyQuotaError | null = null;
 
-  const batchSize = clampInteger(options.classificationBatchSize ?? 1, 1, 8);
-  const batches: NormalizedCandidate[][] = [];
-  for (let index = 0; index < prefiltered.accepted.length; index += batchSize) {
-    batches.push(prefiltered.accepted.slice(index, index + batchSize));
-  }
-  const classificationBatches = await mapConcurrent(
-    batches,
-    classificationConcurrency,
-    async (batch) => {
-      try {
-        const classifications = batchSize === 1
-          ? [await editor.classify(batch[0])]
-          : await editor.classifyMany(batch);
-        return batch.map((candidate, index) => {
-          const classification = classifications[index];
-          const primaryTopic = classification.topics[0] ?? candidate.topic;
-          const ranking = calculateRanking({
-            classification,
-            primaryTopic,
-            topicWeight: options.topicWeights?.[primaryTopic] ?? defaultTopicWeights[primaryTopic],
-            feedback: options.feedbackFor?.(candidate),
-          });
-          return { success: true as const, candidate, classification, ranking };
-        });
-      } catch (error) {
-        return batch.map((candidate) => ({
-          success: false as const,
-          failure: failure(candidate, "classification", error),
-        }));
-      }
-    },
-  );
-
-  for (const item of classificationBatches.flat()) {
-    if (item.success) {
-      ranked.push({
-        candidate: item.candidate,
-        classification: item.classification,
-        ranking: item.ranking,
-      });
-    } else {
-      failures.push(item.failure);
+  for (const batch of chunk(prefiltered.accepted, classificationBatchSize)) {
+    let classifications: Array<Classification | null>;
+    try {
+      if (quotaError) throw quotaError;
+      classifications = await editor.classifyMany(batch);
+    } catch (error) {
+      if (error instanceof GeminiDailyQuotaError) quotaError = error;
+      failures.push(...batch.map((candidate) => failure(candidate, "classification", error)));
+      continue;
     }
+
+    batch.forEach((candidate, index) => {
+      const classification = classifications[index];
+      if (!classification) {
+        failures.push(failure(candidate, "classification", new Error("Missing from batch output.")));
+        return;
+      }
+      const primaryTopic = classification.topics[0] ?? candidate.topic;
+      const ranking = calculateRanking({
+        classification,
+        primaryTopic,
+        topicWeight: options.topicWeights?.[primaryTopic] ?? defaultTopicWeights[primaryTopic],
+        feedback: options.feedbackFor?.(candidate),
+      });
+      ranked.push({ candidate, classification, ranking });
+    });
   }
 
   const aboveThreshold = ranked
     .filter((item) => item.ranking.finalScore >= minimumScore)
     .sort((first, second) => second.ranking.finalScore - first.ranking.finalScore);
   const groups: Array<RankedCandidate & { additionalSources: NormalizedCandidate[] }> = [];
-  let aiDedupeReviews = 0;
 
   for (const item of aboveThreshold) {
     let matched = false;
@@ -129,8 +111,7 @@ export async function processCandidates(
         matched = true;
         break;
       }
-      if (comparison.requiresAIReview && aiDedupeReviews < (options.maxDedupeReviews ?? Infinity)) {
-        aiDedupeReviews += 1;
+      if (comparison.requiresAIReview && !quotaError) {
         try {
           const decision = await editor.decideDuplicate(group.candidate, item.candidate);
           if (decision.same_event) {
@@ -139,6 +120,7 @@ export async function processCandidates(
             break;
           }
         } catch (error) {
+          if (error instanceof GeminiDailyQuotaError) quotaError = error;
           failures.push(failure(item.candidate, "deduplication", error));
         }
       }
@@ -147,42 +129,29 @@ export async function processCandidates(
   }
 
   const stories: StoryDraft[] = [];
-  const summaryResults = await mapConcurrent(
-    groups.slice(0, options.maxSummaries ?? groups.length),
-    summaryConcurrency,
-    async (group) => {
-      try {
-        const summary = await editor.summarize(group.candidate, group.classification);
-        return {
-          success: true as const,
-          story: {
-            ...group,
-            summary,
-          },
-        };
-      } catch (error) {
-        return {
-          success: false as const,
-          failure: failure(group.candidate, "summary", error),
-        };
-      }
-    },
-  );
-
-  for (const item of summaryResults) {
-    if (item.success) {
-      stories.push(item.story);
-    } else {
-      failures.push(item.failure);
+  for (const batch of chunk(groups, summaryBatchSize)) {
+    let summaries: Array<StorySummary | null>;
+    try {
+      if (quotaError) throw quotaError;
+      summaries = await editor.summarizeMany(batch);
+    } catch (error) {
+      if (error instanceof GeminiDailyQuotaError) quotaError = error;
+      failures.push(...batch.map((group) => failure(group.candidate, "summary", error)));
+      continue;
     }
+
+    batch.forEach((group, index) => {
+      const summary = summaries[index];
+      if (summary) {
+        stories.push({ ...group, summary });
+      } else {
+        failures.push(failure(group.candidate, "summary", new Error("Missing from batch output.")));
+      }
+    });
   }
 
   return {
     stories,
-    completedCandidates: [
-      ...ranked.filter((item) => item.ranking.finalScore < minimumScore).map((item) => item.candidate),
-      ...stories.flatMap((story) => [story.candidate, ...story.additionalSources]),
-    ],
     prefilterRejected: prefiltered.rejected,
     belowThresholdCount: ranked.length - aboveThreshold.length,
     failures,
@@ -200,6 +169,14 @@ function failure(
     stage,
     errorMessage: error instanceof Error ? error.message : "Unknown AI processing error.",
   };
+}
+
+function chunk<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function clampInteger(value: number, minimum: number, maximum: number) {

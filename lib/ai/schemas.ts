@@ -11,6 +11,7 @@ export const topicSchema = z.enum([
 ]);
 
 const scoreSchema = z.number().int().min(1).max(5);
+const indexSchema = z.number().int().min(0);
 
 export const classificationSchema = z.object({
   topics: z.array(topicSchema).min(1).max(3),
@@ -39,6 +40,14 @@ export const duplicateDecisionSchema = z.object({
   same_event: z.boolean(),
   confidence: z.number().min(0).max(1),
   reason: z.string().trim().min(1).max(500),
+});
+
+export const classificationBatchSchema = z.object({
+  items: z.array(classificationSchema.extend({ index: indexSchema })),
+});
+
+export const summaryBatchSchema = z.object({
+  items: z.array(summarySchema.extend({ index: indexSchema })),
 });
 
 export type Classification = z.infer<typeof classificationSchema>;

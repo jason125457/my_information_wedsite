@@ -1,7 +1,7 @@
 import {
-  classificationSchema,
+  classificationBatchSchema,
   duplicateDecisionSchema,
-  summarySchema,
+  summaryBatchSchema,
   type Classification,
   type DuplicateDecision,
   type StorySummary,
@@ -9,65 +9,58 @@ import {
 import type { AIModelConfig } from "@/lib/ai/config";
 import type { StructuredAIProvider } from "@/lib/ai/provider";
 import type { NormalizedCandidate } from "@/lib/collectors/types";
-import { z } from "zod";
 import { classificationInstructions } from "@/prompts/classify";
 import { dedupeInstructions } from "@/prompts/dedupe";
 import { summaryInstructions } from "@/prompts/summarize";
 
+export interface SummaryRequest {
+  candidate: NormalizedCandidate;
+  classification: Classification;
+}
+
+/**
+ * Batch-oriented AI editor. Each batch is one model request, which keeps the
+ * pipeline within the Gemini free tier's small daily request budget.
+ * Results are aligned with the input order; a missing item is returned as null.
+ */
 export class StoryAIEditor {
   constructor(
     private readonly provider: StructuredAIProvider,
-    private readonly models: Pick<AIModelConfig, "fast" | "reasoning">,
+    private readonly models: AIModelConfig,
   ) {}
 
-  classify(candidate: NormalizedCandidate): Promise<Classification> {
-    return this.provider.generate({
-      model: this.models.fast,
-      schemaName: "story_classification",
-      schema: classificationSchema,
-      instructions: classificationInstructions,
-      input: serializeCandidate(candidate),
-      maxOutputTokens: 1_024,
-    });
-  }
-
-  async classifyMany(candidates: NormalizedCandidate[]): Promise<Classification[]> {
-    if (candidates.length === 0) return [];
-    if (candidates.length === 1) return [await this.classify(candidates[0])];
-    const batchSchema = z.object({
-      results: z.array(z.object({ index: z.number().int(), classification: classificationSchema })),
-    });
-    const response = await this.provider.generate({
+  async classifyMany(candidates: NormalizedCandidate[]): Promise<Array<Classification | null>> {
+    const output = await this.provider.generate({
       model: this.models.fast,
       schemaName: "story_classification_batch",
-      schema: batchSchema,
-      instructions: `${classificationInstructions}\nClassify each numbered item independently. Return exactly one result for every index.`,
-      input: JSON.stringify(candidates.map((candidate, index) => ({ index, item: JSON.parse(serializeCandidate(candidate)) }))),
-      maxOutputTokens: 3_000,
+      schema: classificationBatchSchema,
+      instructions: classificationInstructions,
+      input: JSON.stringify({
+        items: candidates.map((candidate, index) => ({ index, ...serializeCandidate(candidate) })),
+      }),
+      maxOutputTokens: 200 * candidates.length + 500,
     });
-    if (response.results.length !== candidates.length) throw new Error("Gemini batch classification count mismatch.");
-    const byIndex = new Map<number, Classification>();
-    for (const result of response.results) {
-      if (result.index < 0 || result.index >= candidates.length || byIndex.has(result.index)) {
-        throw new Error("Gemini batch classification indices are invalid.");
-      }
-      byIndex.set(result.index, result.classification);
-    }
-    return candidates.map((_, index) => byIndex.get(index)!);
+
+    return alignByIndex(output.items, candidates.length);
   }
 
-  summarize(
-    candidate: NormalizedCandidate,
-    classification: Classification,
-  ): Promise<StorySummary> {
-    return this.provider.generate({
-      model: this.models.reasoning,
-      schemaName: "story_summary",
-      schema: summarySchema,
+  async summarizeMany(requests: SummaryRequest[]): Promise<Array<StorySummary | null>> {
+    const output = await this.provider.generate({
+      model: this.models.quality,
+      schemaName: "story_summary_batch",
+      schema: summaryBatchSchema,
       instructions: summaryInstructions,
-      input: `${serializeCandidate(candidate)}\n\nCLASSIFICATION\n${JSON.stringify(classification)}`,
-      maxOutputTokens: 1_024,
+      input: JSON.stringify({
+        items: requests.map(({ candidate, classification }, index) => ({
+          index,
+          ...serializeCandidate(candidate),
+          classification,
+        })),
+      }),
+      maxOutputTokens: 600 * requests.length + 500,
     });
+
+    return alignByIndex(output.items, requests.length);
   }
 
   decideDuplicate(
@@ -75,26 +68,37 @@ export class StoryAIEditor {
     second: NormalizedCandidate,
   ): Promise<DuplicateDecision> {
     return this.provider.generate({
-      model: this.models.reasoning,
+      model: this.models.quality,
       schemaName: "duplicate_decision",
       schema: duplicateDecisionSchema,
       instructions: dedupeInstructions,
-      input: `ITEM A\n${serializeCandidate(first)}\n\nITEM B\n${serializeCandidate(second)}`,
-      maxOutputTokens: 1_024,
+      input: JSON.stringify({ item_a: serializeCandidate(first), item_b: serializeCandidate(second) }),
+      maxOutputTokens: 400,
     });
   }
 }
 
+function alignByIndex<T extends { index: number }>(
+  items: T[],
+  length: number,
+): Array<Omit<T, "index"> | null> {
+  const aligned: Array<Omit<T, "index"> | null> = Array.from({ length }, () => null);
+  for (const { index, ...item } of items) {
+    if (index < length && aligned[index] === null) aligned[index] = item;
+  }
+  return aligned;
+}
+
 function serializeCandidate(candidate: NormalizedCandidate) {
-  return JSON.stringify({
+  return {
     source_name: candidate.sourceName,
     source_type: candidate.sourceType,
     url: candidate.url,
     title: candidate.title,
-    excerpt: candidate.excerpt?.slice(0, 3_000) ?? null,
+    excerpt: candidate.excerpt?.slice(0, 1_500) ?? null,
     published_at: candidate.publishedAt,
     configured_topic: candidate.topic,
     configured_as_discovery: candidate.isDiscovery,
     engagement: candidate.engagement,
-  });
+  };
 }

@@ -1,6 +1,12 @@
-export { getAIModelConfig, getIngestionModelConfig, getGeminiApiKey, type AIModelConfig } from "@/lib/ai/config";
 export {
-  GeminiInteractionsProvider,
+  getAIModelConfig,
+  getGeminiApiKey,
+  getGeminiMinIntervalMs,
+  type AIModelConfig,
+} from "@/lib/ai/config";
+export {
+  GeminiDailyQuotaError,
+  GeminiProvider,
   type StructuredAIProvider,
   type StructuredGenerationRequest,
 } from "@/lib/ai/provider";
@@ -12,4 +18,4 @@ export {
   type DuplicateDecision,
   type StorySummary,
 } from "@/lib/ai/schemas";
-export { StoryAIEditor } from "@/lib/ai/story-editor";
+export { StoryAIEditor, type SummaryRequest } from "@/lib/ai/story-editor";

@@ -13,12 +13,6 @@ const timeFormatter = new Intl.DateTimeFormat("zh-TW", {
 export default async function JobsPage() {
   const { supabase, user } = await requireAuthenticatedUser();
   const jobs = await loadRecentJobs(supabase);
-  const aiConfigured = Boolean(
-    process.env.GEMINI_API_KEY &&
-      process.env.GEMINI_MODEL_FAST &&
-      process.env.GEMINI_MODEL_REASONING,
-  );
-
   return (
     <>
       <AppHeader email={user.email} />
@@ -28,12 +22,6 @@ export default async function JobsPage() {
         <p className="mt-3 max-w-2xl text-sm text-[var(--muted)]">
           最近的內容收集與 Daily Digest 執行狀態。只有已登入的個人帳號能查看錯誤細節。
         </p>
-
-        {!aiConfigured ? (
-          <p className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            AI 收集尚未啟用：請在 Vercel 設定 Gemini API 金鑰與兩個模型。排程會略過收集，不會把舊資料當成新內容。
-          </p>
-        ) : null}
 
         <div className="mt-8 space-y-4">
           {jobs.length ? jobs.map((job) => (

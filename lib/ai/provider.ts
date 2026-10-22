@@ -1,4 +1,5 @@
-import type { ZodType } from "zod";
+import { ApiError, GoogleGenAI } from "@google/genai";
+import { z, type ZodType } from "zod";
 
 export interface StructuredGenerationRequest<T> {
   model: string;
@@ -13,129 +14,95 @@ export interface StructuredAIProvider {
   generate<T>(request: StructuredGenerationRequest<T>): Promise<T>;
 }
 
-type JsonSchema = Record<string, unknown>;
-const score: JsonSchema = { type: "integer", minimum: 1, maximum: 5 };
-const classification: JsonSchema = {
-  type: "object",
-  properties: {
-    topics: { type: "array", items: { type: "string", enum: ["ai", "cybersecurity", "technology", "finance", "world", "music", "photography"] }, minItems: 1, maxItems: 3 },
-    interest_relevance: score,
-    information_value: score,
-    importance: score,
-    freshness: score,
-    discussion_popularity: score,
-    discovery_value: score,
-    content_type: { type: "string", enum: ["current", "discovery"] },
-    fact_status: { type: "string", enum: ["official_confirmation", "reported", "community_discussion", "unknown"] },
-  },
-  required: ["topics", "interest_relevance", "information_value", "importance", "freshness", "discussion_popularity", "discovery_value", "content_type", "fact_status"],
-};
-
-const schemas: Record<string, JsonSchema> = {
-  story_classification: classification,
-  story_classification_batch: {
-    type: "object",
-    properties: {
-      results: {
-        type: "array",
-        items: { type: "object", properties: { index: { type: "integer" }, classification }, required: ["index", "classification"] },
-      },
-    },
-    required: ["results"],
-  },
-  story_summary: {
-    type: "object",
-    properties: { title: { type: "string" }, summary: { type: "string" }, why_recommended: { type: "string" } },
-    required: ["title", "summary", "why_recommended"],
-  },
-  duplicate_decision: {
-    type: "object",
-    properties: { same_event: { type: "boolean" }, confidence: { type: "number", minimum: 0, maximum: 1 }, reason: { type: "string" } },
-    required: ["same_event", "confidence", "reason"],
-  },
-};
-
-export interface GeminiProviderOptions {
-  fetchImplementation?: typeof fetch;
-  requestsPerMinute?: number;
-  sleep?: (milliseconds: number) => Promise<void>;
-  now?: () => number;
+interface GeminiProviderOptions {
+  minIntervalMs?: number;
+  maxRetries?: number;
+  sleep?: (ms: number) => Promise<void>;
 }
 
-/** Stateless Gemini Interactions API adapter with a per-model start-rate limit. */
-export class GeminiInteractionsProvider implements StructuredAIProvider {
-  private readonly fetchImplementation: typeof fetch;
-  private readonly sleep: (milliseconds: number) => Promise<void>;
-  private readonly now: () => number;
-  private readonly intervalMs: number;
-  private readonly nextStartByModel = new Map<string, number>();
+/** Thrown when the free-tier daily quota is exhausted; retrying is pointless until reset. */
+export class GeminiDailyQuotaError extends Error {
+  constructor(message: string) {
+    super(`Gemini daily quota exhausted: ${message}`);
+    this.name = "GeminiDailyQuotaError";
+  }
+}
 
-  constructor(private readonly apiKey: string, options: GeminiProviderOptions = {}) {
-    if (!apiKey.trim()) throw new Error("GEMINI_API_KEY is required for AI processing.");
-    this.fetchImplementation = options.fetchImplementation ?? fetch;
+export class GeminiProvider implements StructuredAIProvider {
+  private readonly client: GoogleGenAI;
+  private readonly minIntervalMs: number;
+  private readonly maxRetries: number;
+  private readonly sleep: (ms: number) => Promise<void>;
+  private gate: Promise<void> = Promise.resolve();
+  private lastRequestAt = 0;
+
+  constructor(apiKey: string, options: GeminiProviderOptions = {}) {
+    if (!apiKey) throw new Error("GEMINI_API_KEY is required for AI processing.");
+    this.client = new GoogleGenAI({ apiKey });
+    this.minIntervalMs = options.minIntervalMs ?? 6_000;
+    this.maxRetries = options.maxRetries ?? 3;
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-    this.now = options.now ?? Date.now;
-    this.intervalMs = Math.ceil(60_000 / (options.requestsPerMinute ?? 14));
   }
 
-  async generate<T>(request: StructuredGenerationRequest<T>): Promise<T> {
-    const jsonSchema = schemas[request.schemaName];
-    if (!jsonSchema) throw new Error(`Unsupported Gemini output schema: ${request.schemaName}`);
-    if (!/^[a-zA-Z0-9._-]+$/.test(request.model)) throw new Error("Invalid Gemini model name.");
+  async generate<T>(request: StructuredGenerationRequest<T>) {
+    const responseJsonSchema = toGeminiJsonSchema(request.schema);
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      await this.waitForModelSlot(request.model);
-      const response = await this.fetchImplementation("https://generativelanguage.googleapis.com/v1beta/interactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": this.apiKey },
-        body: JSON.stringify({
+    for (let attempt = 0; ; attempt += 1) {
+      await this.waitForTurn();
+      try {
+        const response = await this.client.models.generateContent({
           model: request.model,
-          store: false,
-          system_instruction: request.instructions,
-          input: request.input,
-          response_format: { type: "text", mime_type: "application/json", schema: jsonSchema },
-          generation_config: request.maxOutputTokens ? { max_output_tokens: request.maxOutputTokens } : undefined,
-        }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (response.status === 429 && attempt === 0) {
-        const retryAfter = Number(response.headers.get("retry-after"));
-        await this.sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 15_000) : 5_000);
-        continue;
+          contents: request.input,
+          config: {
+            systemInstruction: request.instructions,
+            responseMimeType: "application/json",
+            responseJsonSchema,
+            maxOutputTokens: request.maxOutputTokens,
+            temperature: 0.2,
+          },
+        });
+
+        const text = response.text;
+        if (!text) throw new Error(`Gemini returned no ${request.schemaName} output.`);
+        return request.schema.parse(JSON.parse(text));
+      } catch (error) {
+        const retryDelay = retryDelayFor(error, attempt);
+        if (retryDelay === null || attempt >= this.maxRetries) throw error;
+        await this.sleep(retryDelay);
       }
-      if (!response.ok) throw new Error(`Gemini request failed (${response.status}).`);
-      const body: unknown = await response.json();
-      return request.schema.parse(JSON.parse(extractOutputText(body)));
     }
-    throw new Error("Gemini request could not be completed.");
   }
 
-  private async waitForModelSlot(model: string) {
-    const now = this.now();
-    const start = Math.max(now, this.nextStartByModel.get(model) ?? now);
-    this.nextStartByModel.set(model, start + this.intervalMs);
-    if (start > now) await this.sleep(start - now);
+  /** Serializes requests and keeps at least `minIntervalMs` between them. */
+  private waitForTurn() {
+    const turn = this.gate.then(async () => {
+      const wait = this.lastRequestAt + this.minIntervalMs - Date.now();
+      if (wait > 0) await this.sleep(wait);
+      this.lastRequestAt = Date.now();
+    });
+    this.gate = turn.catch(() => undefined);
+    return turn;
   }
 }
 
-export function extractOutputText(body: unknown): string {
-  if (!body || typeof body !== "object") throw new Error("Gemini returned an invalid response.");
-  const result = body as { status?: unknown; steps?: unknown };
-  if (result.status !== "completed" || !Array.isArray(result.steps)) {
-    throw new Error("Gemini did not complete the response.");
-  }
-  const texts: string[] = [];
-  for (const step of result.steps) {
-    if (!step || typeof step !== "object" || (step as { type?: unknown }).type !== "model_output") continue;
-    const content = (step as { content?: unknown }).content;
-    if (!Array.isArray(content)) continue;
-    for (const part of content) {
-      if (part && typeof part === "object" && (part as { type?: unknown }).type === "text" && typeof (part as { text?: unknown }).text === "string") {
-        texts.push((part as { text: string }).text);
-      }
+function toGeminiJsonSchema(schema: ZodType) {
+  const jsonSchema = z.toJSONSchema(schema) as Record<string, unknown>;
+  delete jsonSchema.$schema;
+  return jsonSchema;
+}
+
+/** Returns a delay in ms when the error is worth retrying, otherwise null. */
+export function retryDelayFor(error: unknown, attempt: number): number | null {
+  if (!(error instanceof ApiError)) return null;
+
+  if (error.status === 429) {
+    if (/per\s*day|PerDay/i.test(error.message)) {
+      throw new GeminiDailyQuotaError(error.message);
     }
+    const suggested = error.message.match(/retry(?:Delay)?["\s:]+(?:in\s+)?"?(\d+(?:\.\d+)?)s/i);
+    return suggested ? Math.ceil(Number(suggested[1]) * 1000) + 1_000 : 30_000 * (attempt + 1);
   }
-  const output = texts.join("").trim();
-  if (!output) throw new Error("Gemini returned no text output.");
-  return output;
+
+  if (error.status >= 500) return 10_000 * (attempt + 1);
+  return null;
 }

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getAIModelConfig, getIngestionModelConfig } from "@/lib/ai/config";
-import type { StructuredAIProvider, StructuredGenerationRequest } from "@/lib/ai/provider";
+import { getAIModelConfig } from "@/lib/ai/config";
 import {
   classificationSchema,
   type Classification,
@@ -12,6 +11,7 @@ import type { NormalizedCandidate } from "@/lib/collectors/types";
 import { choosePrimarySource, compareCandidates, titleSimilarity } from "@/lib/dedupe";
 import { prefilterCandidates, processCandidates } from "@/lib/pipeline";
 import { calculateFeedbackAdjustment, calculateRanking, getWeightProfile } from "@/lib/ranking";
+import { createBatchProvider } from "./helpers/batch-provider";
 
 const classification: Classification = {
   topics: ["ai"],
@@ -36,55 +36,56 @@ describe("AI output contracts", () => {
     expect(
       getAIModelConfig({
         GEMINI_MODEL_FAST: "fast-model",
-        GEMINI_MODEL_REASONING: "reasoning-model",
-        GEMINI_MODEL_SEARCH: "search-model",
+        GEMINI_MODEL_QUALITY: "quality-model",
       }),
-    ).toEqual({ fast: "fast-model", reasoning: "reasoning-model", search: "search-model" });
+    ).toEqual({ fast: "fast-model", quality: "quality-model" });
     expect(() => getAIModelConfig({})).toThrow("GEMINI_MODEL_FAST is required.");
-    expect(getIngestionModelConfig({
-      GEMINI_MODEL_FAST: "fast-model",
-      GEMINI_MODEL_REASONING: "reasoning-model",
-    })).toEqual({ fast: "fast-model", reasoning: "reasoning-model" });
   });
 
-  it("routes batched classification to fast and summaries/dedupe to reasoning", async () => {
-    const calls: Array<{ model: string; schemaName: string }> = [];
+  it("batches classification on the fast model and summaries/dedupe on the quality model", async () => {
+    const calls: Array<{ model: string; schemaName: string; items: number }> = [];
     const summary: StorySummary = {
       title: "A grounded summary",
       summary: "這是第一句。這是第二句。",
       why_recommended: "與你的 AI 工具興趣相關。",
     };
-    const provider: StructuredAIProvider = {
-      async generate<T>(request: StructuredGenerationRequest<T>) {
-        calls.push({ model: request.model, schemaName: request.schemaName });
-        const outputs: Record<string, unknown> = {
-          story_classification: classification,
-          story_summary: summary,
-          duplicate_decision: {
-            same_event: true,
-            confidence: 0.91,
-            reason: "Both describe the same release.",
-          },
-        };
-        return request.schema.parse(outputs[request.schemaName]);
+    const provider = createBatchProvider({
+      classify: () => classification,
+      summarize: () => summary,
+      decideDuplicate: () => ({ same_event: true, confidence: 0.91, reason: "Same release." }),
+      onRequest: (request, items) => {
+        calls.push({ model: request.model, schemaName: request.schemaName, items: items.length });
       },
-    };
-    const editor = new StoryAIEditor(provider, {
-      fast: "fast-model",
-      reasoning: "reasoning-model",
     });
+    const editor = new StoryAIEditor(provider, { fast: "fast-model", quality: "quality-model" });
     const first = makeCandidate();
     const second = makeCandidate({ sourceId: "other", canonicalUrl: "https://other.example/a" });
 
-    await editor.classify(first);
-    await editor.summarize(first, classification);
+    expect(await editor.classifyMany([first, second])).toEqual([classification, classification]);
+    expect(await editor.summarizeMany([{ candidate: first, classification }])).toEqual([summary]);
     await editor.decideDuplicate(first, second);
 
     expect(calls).toEqual([
-      { model: "fast-model", schemaName: "story_classification" },
-      { model: "reasoning-model", schemaName: "story_summary" },
-      { model: "reasoning-model", schemaName: "duplicate_decision" },
+      { model: "fast-model", schemaName: "story_classification_batch", items: 2 },
+      { model: "quality-model", schemaName: "story_summary_batch", items: 1 },
+      { model: "quality-model", schemaName: "duplicate_decision", items: 0 },
     ]);
+  });
+
+  it("returns null for items the model left out of a batch", async () => {
+    const provider = createBatchProvider({ classify: () => classification });
+    const editor = new StoryAIEditor(
+      {
+        async generate(request) {
+          const full = (await provider.generate(request)) as { items: Array<{ index: number }> };
+          return { items: full.items.filter((item) => item.index !== 1) } as never;
+        },
+      },
+      { fast: "fast-model", quality: "quality-model" },
+    );
+
+    const result = await editor.classifyMany([makeCandidate(), makeCandidate(), makeCandidate()]);
+    expect(result).toEqual([classification, null, classification]);
   });
 });
 
@@ -233,74 +234,32 @@ describe("cheap prefilter", () => {
 });
 
 describe("processing orchestration", () => {
-  it("batches classification and leaves deferred summaries eligible for a later run", async () => {
-    const calls: string[] = [];
-    const provider: StructuredAIProvider = {
-      async generate<T>(request: StructuredGenerationRequest<T>) {
-        calls.push(request.schemaName);
-        if (request.schemaName === "story_classification_batch") {
-          const items = JSON.parse(request.input) as Array<{ index: number }>;
-          return request.schema.parse({ results: items.map((item) => ({ index: item.index, classification })) });
-        }
-        if (request.schemaName === "story_summary") {
-          return request.schema.parse({ title: "Grounded title", summary: "First sentence. Second sentence.", why_recommended: "Relevant." });
-        }
-        throw new Error(`Unexpected call: ${request.schemaName}`);
-      },
-    };
-    const editor = new StoryAIEditor(provider, { fast: "fast", reasoning: "reasoning" });
-    const titles = [
-      "OpenAI introduces a new desktop application",
-      "A cybersecurity team documents a ransomware incident",
-      "A Japanese shoegaze band releases its debut album",
-      "Taiwan photographers share a mountain sunrise location",
-      "A chip maker reports quarterly financial results",
-    ];
-    const candidates = Array.from({ length: 5 }, (_, index) => makeCandidate({
-      sourceId: `source-${index}`, externalId: `${index}`,
-      url: `https://example.com/story-${index}`, canonicalUrl: `https://example.com/story-${index}`,
-      title: titles[index],
-      publishedAt: "2026-09-12T12:00:00Z",
-    }));
-    const result = await processCandidates(candidates, editor, {
-      now: new Date("2026-09-13T00:00:00Z"), minimumScore: 0,
-      classificationBatchSize: 3, maxSummaries: 2, maxDedupeReviews: 0,
-    });
-    expect(calls.filter((name) => name === "story_classification_batch")).toHaveLength(2);
-    expect(calls.filter((name) => name === "story_summary")).toHaveLength(2);
-    expect(result.stories).toHaveLength(2);
-    expect(result.completedCandidates).toHaveLength(2);
-  });
-
   it("summarizes only high-value deduplicated stories", async () => {
-    const calls: string[] = [];
-    const provider: StructuredAIProvider = {
-      async generate<T>(request: StructuredGenerationRequest<T>) {
-        calls.push(request.schemaName);
-        if (request.schemaName === "story_summary") {
-          return request.schema.parse({
-            title: "OpenAI 推出新的 coding agent",
-            summary: "官方來源公布一項新的開發工具。另一來源報導同一事件。",
-            why_recommended: "與你的 AI coding 興趣高度相關。",
-          });
-        }
-
-        const lowValue = request.input.includes("Routine low-value update");
-        return request.schema.parse({
+    const calls: Array<{ schemaName: string; items: number }> = [];
+    const provider = createBatchProvider({
+      classify: (item) => {
+        const lowValue = item.title.includes("Routine low-value update");
+        const score = lowValue ? 1 : 5;
+        return {
           ...classification,
-          interest_relevance: lowValue ? 1 : 5,
-          information_value: lowValue ? 1 : 5,
-          importance: lowValue ? 1 : 5,
-          freshness: lowValue ? 1 : 5,
-          discussion_popularity: lowValue ? 1 : 5,
-          discovery_value: lowValue ? 1 : 5,
-        });
+          interest_relevance: score,
+          information_value: score,
+          importance: score,
+          freshness: score,
+          discussion_popularity: score,
+          discovery_value: score,
+        };
       },
-    };
-    const editor = new StoryAIEditor(provider, {
-      fast: "fast-model",
-      reasoning: "reasoning-model",
+      summarize: () => ({
+        title: "OpenAI 推出新的 coding agent",
+        summary: "官方來源公布一項新的開發工具。另一來源報導同一事件。",
+        why_recommended: "與你的 AI coding 興趣高度相關。",
+      }),
+      onRequest: (request, items) => {
+        calls.push({ schemaName: request.schemaName, items: items.length });
+      },
     });
+    const editor = new StoryAIEditor(provider, { fast: "fast-model", quality: "quality-model" });
 
     const result = await processCandidates(
       [
@@ -327,9 +286,10 @@ describe("processing orchestration", () => {
     expect(result.stories).toHaveLength(1);
     expect(result.stories[0].additionalSources).toHaveLength(1);
     expect(result.belowThresholdCount).toBe(1);
-    expect(calls.filter((name) => name === "story_classification")).toHaveLength(3);
-    expect(calls.filter((name) => name === "story_summary")).toHaveLength(1);
-    expect(calls).not.toContain("duplicate_decision");
+    expect(calls).toEqual([
+      { schemaName: "story_classification_batch", items: 3 },
+      { schemaName: "story_summary_batch", items: 1 },
+    ]);
   });
 });
 

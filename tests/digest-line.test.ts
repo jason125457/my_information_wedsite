@@ -1,30 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { isAuthorizedCronRequest } from "@/lib/cron/authorize";
 import { selectDailyDigest } from "@/lib/digest/select";
 import { sendLineDigestNotification } from "@/lib/line/push";
-
-describe("cron authorization", () => {
-  it("accepts only the exact bearer secret", () => {
-    expect(
-      isAuthorizedCronRequest(
-        new Request("https://example.com/api/cron/digest", {
-          headers: { Authorization: "Bearer correct-secret" },
-        }),
-        "correct-secret",
-      ),
-    ).toBe(true);
-    expect(
-      isAuthorizedCronRequest(
-        new Request("https://example.com/api/cron/digest", {
-          headers: { Authorization: "Bearer wrong-secret" },
-        }),
-        "correct-secret",
-      ),
-    ).toBe(false);
-    expect(isAuthorizedCronRequest(new Request("https://example.com"), "correct-secret")).toBe(false);
-  });
-});
 
 describe("daily digest selection", () => {
   it("keeps the quality threshold, maximum volume, and discovery target", () => {

@@ -1,0 +1,63 @@
+name: Scheduled jobs
+
+# Ingestion and the Daily Digest run here instead of on the web host:
+# GitHub Actions is free for public repositories and has no short function
+# time limit, and the regular writes keep the free Supabase project active.
+on:
+  schedule:
+    - cron: "23 */2 * * *" # ingest every 2 hours (GitHub may start a few minutes late)
+    - cron: "7 14 * * *" # Daily Digest at 22:07 Asia/Taipei
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Job to run
+        type: choice
+        options: [ingest, digest]
+        default: ingest
+
+concurrency:
+  group: scheduled-jobs
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: write # only for the keepalive step below
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL_FAST: ${{ vars.GEMINI_MODEL_FAST || 'gemini-3.1-flash-lite' }}
+      GEMINI_MODEL_QUALITY: ${{ vars.GEMINI_MODEL_QUALITY || 'gemini-3.5-flash-lite' }}
+      GEMINI_MIN_INTERVAL_MS: ${{ vars.GEMINI_MIN_INTERVAL_MS || '5000' }}
+      APP_URL: ${{ vars.APP_URL }}
+      LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+      LINE_TARGET_USER_ID: ${{ secrets.LINE_TARGET_USER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: Ingest sources
+        if: github.event.schedule == '23 */2 * * *' || inputs.job == 'ingest'
+        run: npm run job:ingest
+
+      - name: Generate Daily Digest
+        if: github.event.schedule == '7 14 * * *' || inputs.job == 'digest'
+        run: npm run job:digest
+
+      # GitHub disables scheduled workflows after 60 days without repository
+      # activity. Re-enabling the workflow once a day resets that timer.
+      - name: Keep schedule alive
+        if: github.event.schedule == '7 14 * * *'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method PUT "repos/${{ github.repository }}/actions/workflows/jobs.yml/enable"
