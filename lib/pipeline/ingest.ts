@@ -154,6 +154,30 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
       };
     }
 
+    // Do not fetch sources when the editor cannot process them: fetched items
+    // would otherwise sit unprocessed. An injected editor keeps tests and
+    // controlled backfills independent of production secrets.
+    if (!options.editor) {
+      try {
+        getGeminiApiKey();
+        getAIModelConfig();
+      } catch {
+        const warning =
+          "AI ingestion is not configured. Set GEMINI_API_KEY, GEMINI_MODEL_FAST, and GEMINI_MODEL_QUALITY.";
+        const totals = computeTotals(statsBySource, 0);
+        await finishJobRun(supabase, job.id, "partial", 0, statsBySource, totals, startTime, warning);
+        return {
+          jobId: job.id,
+          status: "partial",
+          itemsProcessed: 0,
+          sources: Array.from(statsBySource.values()),
+          totals,
+          durationMs: Date.now() - startTime,
+          warning,
+        };
+      }
+    }
+
     // 3. Prepare collectors with failure isolation
     const collectorsToRun: Collector[] = [];
     for (const source of sources) {
