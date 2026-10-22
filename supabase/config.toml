@@ -26,11 +26,11 @@ port = 54324
 
 [auth]
 enabled = true
-site_url = "https://my-information-wedsite.vercel.app"
+site_url = "https://www.shuns.site"
 additional_redirect_urls = [
   "http://127.0.0.1:3000/auth/callback",
   "http://localhost:3000/auth/callback",
-  "https://my-information-wedsite.vercel.app/auth/callback",
+  "https://www.shuns.site/auth/callback",
 ]
 jwt_expiry = 3600
 enable_signup = false
