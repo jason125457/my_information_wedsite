@@ -59,7 +59,7 @@ export async function processCandidates(
   options: ProcessingOptions = {},
 ): Promise<ProcessingResult> {
   const maximum = clampInteger(options.maxCandidates ?? 150, 1, 500);
-  const minimumScore = clamp(options.minimumScore ?? 55, 0, 100);
+  const minimumScore = clamp(options.minimumScore ?? 70, 0, 100);
   const classificationBatchSize = clampInteger(options.classificationBatchSize ?? 25, 1, 50);
   const summaryBatchSize = clampInteger(options.summaryBatchSize ?? 8, 1, 20);
 

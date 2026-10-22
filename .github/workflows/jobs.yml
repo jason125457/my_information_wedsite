@@ -5,7 +5,7 @@ name: Scheduled jobs
 # time limit, and the regular writes keep the free Supabase project active.
 on:
   schedule:
-    - cron: "23 */3 * * *" # ingest every 3 hours (GitHub may start a few minutes late)
+    - cron: "23 */2 * * *" # ingest every 2 hours (GitHub may start a few minutes late)
     - cron: "7 14 * * *" # Daily Digest at 22:07 Asia/Taipei
   workflow_dispatch:
     inputs:
@@ -32,9 +32,9 @@ jobs:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GEMINI_MODEL_FAST: ${{ vars.GEMINI_MODEL_FAST || 'gemini-flash-lite-latest' }}
-      GEMINI_MODEL_QUALITY: ${{ vars.GEMINI_MODEL_QUALITY || 'gemini-flash-lite-latest' }}
-      GEMINI_MIN_INTERVAL_MS: ${{ vars.GEMINI_MIN_INTERVAL_MS || '6000' }}
+      GEMINI_MODEL_FAST: ${{ vars.GEMINI_MODEL_FAST || 'gemini-3.1-flash-lite' }}
+      GEMINI_MODEL_QUALITY: ${{ vars.GEMINI_MODEL_QUALITY || 'gemini-3.5-flash-lite' }}
+      GEMINI_MIN_INTERVAL_MS: ${{ vars.GEMINI_MIN_INTERVAL_MS || '5000' }}
       APP_URL: ${{ vars.APP_URL }}
       LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
       LINE_TARGET_USER_ID: ${{ secrets.LINE_TARGET_USER_ID }}
@@ -47,7 +47,7 @@ jobs:
       - run: npm ci
 
       - name: Ingest sources
-        if: github.event.schedule == '23 */3 * * *' || inputs.job == 'ingest'
+        if: github.event.schedule == '23 */2 * * *' || inputs.job == 'ingest'
         run: npm run job:ingest
 
       - name: Generate Daily Digest

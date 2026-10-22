@@ -66,6 +66,7 @@ MVP 不建立獨立 backend service。
 - `GeminiProvider` 將請求序列化並保持最小間隔（`GEMINI_MIN_INTERVAL_MS`），429 per-minute 依建議時間重試，per-day 額度用完立即停止該次 run 的後續 AI 呼叫。
 - AI 處理失敗的 candidates 不寫入 `raw_items`，下一次 run 會重新嘗試。
 - 每次 run 最多處理 150 則，以 round-robin 方式在各來源間分配，避免單一來源佔滿額度。
+- 預設品質門檻 `final_score >= 70`（2026-10-22 依首次實測調整；55 時 150 則中有 133 則通過，低分多為雜訊）。
 
 Discovery 搜尋結果必須保存 URL、Title、Source 與 citation metadata，UI 必須顯示清楚且可點擊的原始來源。
 
@@ -309,7 +310,7 @@ Feed 不使用 infinite scroll，採 Load More 或分頁。
 
 | Job | Asia/Taipei | UTC cron |
 | --- | --- | --- |
-| Feed refresh | 每 3 小時 | `23 */3 * * *` |
+| Feed refresh | 每 2 小時 | `23 */2 * * *` |
 | Daily Digest | 每天 22:07 | `7 14 * * *` |
 | Weekly Review | 週日 21:00 | `0 13 * * 0` |
 

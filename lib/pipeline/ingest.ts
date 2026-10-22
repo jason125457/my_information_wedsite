@@ -284,7 +284,7 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
 
     const processingResult = await processCandidates(candidatesToProcess, editor, {
       now,
-      minimumScore: options.minimumScore ?? 55,
+      minimumScore: options.minimumScore ?? 70,
       maxCandidates: options.maxTotalCandidates ?? 150,
       feedbackFor: (candidate) => feedbackProfile.feedbackFor(candidate),
     });

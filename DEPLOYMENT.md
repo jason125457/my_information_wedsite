@@ -28,7 +28,7 @@ Everything runs on free tiers with **no payment method attached anywhere**. If a
 ## 2. Gemini API key
 
 1. Open aistudio.google.com and create an API key. **Do not** set up billing on the Google Cloud project it creates.
-2. Open aistudio.google.com/rate-limit to see this project's real free-tier limits. Each ingestion run uses roughly 10–15 requests on its first run and fewer afterwards. If the daily limit is tight, lower the schedule in `.github/workflows/jobs.yml`.
+2. Open aistudio.google.com/rate-limit to see this project's real free-tier limits. Each ingestion run uses roughly 5–15 requests. Quotas are per model, so use Flash Lite models (500 requests/day each on the free tier as of 2026-10) and avoid Flash models (20/day).
 
 ## 3. GitHub Actions (scheduled jobs)
 
@@ -46,7 +46,7 @@ Secrets:
 
 Variables (optional; defaults shown in `.github/workflows/jobs.yml`): `GEMINI_MODEL_FAST`, `GEMINI_MODEL_QUALITY`, `GEMINI_MIN_INTERVAL_MS`, `APP_URL`.
 
-Then run **Actions → Scheduled jobs → Run workflow** with `ingest` once to fill the feed. The schedule then runs ingestion every 3 hours and the Daily Digest at 22:07 Asia/Taipei. A keepalive step stops GitHub from disabling the schedule after 60 quiet days.
+Then run **Actions → Scheduled jobs → Run workflow** with `ingest` once to fill the feed. The schedule then runs ingestion every 2 hours and the Daily Digest at 22:07 Asia/Taipei. A keepalive step stops GitHub from disabling the schedule after 60 quiet days.
 
 ## 4. Cloudflare Workers (web app)
 

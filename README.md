@@ -16,7 +16,7 @@ Everything runs on free tiers with no payment method attached (see [DEPLOYMENT.m
 - Deterministic topic-aware ranking, feedback adjustment, and first-layer deduplication
 - Database-backed For You, Saved, Read Later, and History views
 - Public read-only Feed and Digest access; sign-in is optional for personal actions
-- Scheduled ingestion (every 3 hours) and 22:00 Taipei Daily Digest in GitHub Actions; optional LINE push
+- Scheduled ingestion (every 2 hours) and 22:00 Taipei Daily Digest in GitHub Actions; optional LINE push
 - Vitest for authorization, collectors, AI pipeline, and migration-contract tests
 
 ## Prerequisites
