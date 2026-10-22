@@ -39,14 +39,19 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-button,
-input,
-select {
-  font: inherit;
-}
+/* Element defaults live in the base layer so Tailwind utilities (e.g. text-white
+   on a link styled as a button) can override them. Unlayered rules win over
+   every layer in Tailwind 4. */
+@layer base {
+  button,
+  input,
+  select {
+    font: inherit;
+  }
 
-a {
-  color: inherit;
+  a {
+    color: inherit;
+  }
 }
 
 ::selection {
