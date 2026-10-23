@@ -34,7 +34,14 @@ export async function requestMagicLink(formData: FormData) {
     });
 
     if (error) {
-      console.error("Supabase rejected a Magic Link request.");
+      // The page still says "sent" so it never reveals which emails are allowed,
+      // but the reason is logged (e.g. the allowed user was never created in
+      // Supabase Auth, which rejects the request because signups are disabled).
+      console.error("Supabase rejected a Magic Link request.", {
+        status: error.status,
+        code: error.code,
+        message: error.message,
+      });
     }
   } catch {
     console.error("Magic Link delivery failed because authentication is not configured correctly.");
