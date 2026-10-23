@@ -50,7 +50,7 @@ export async function generateDailyDigest(now = new Date()): Promise<DailyDigest
       .insert({
         type: "daily",
         date,
-        title: `Daily Digest · ${date}`,
+        title: `${Number(date.slice(5, 7))} 月 ${Number(date.slice(8, 10))} 日精選`,
         summary: selection.length
           ? `${selection.length} 則真正值得看的內容。`
           : "今天沒有內容通過品質門檻。",

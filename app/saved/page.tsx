@@ -7,5 +7,5 @@ export const dynamic = "force-dynamic";
 export default async function SavedPage() {
   const { supabase, user } = await requireAuthenticatedUser();
   const stories = await loadFeed(supabase, user.id, "saved");
-  return <FeedPage email={user.email} stories={stories} view="saved" eyebrow="Knowledge base" heading="Saved for the long term" />;
+  return <FeedPage email={user.email} stories={stories} view="saved" eyebrow="知識庫" heading="收藏" />;
 }

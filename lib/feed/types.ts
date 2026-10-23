@@ -1,12 +1,12 @@
 export const topicFilters = [
-  { slug: "all", label: "For You" },
+  { slug: "all", label: "全部" },
   { slug: "ai", label: "AI" },
-  { slug: "cybersecurity", label: "Cybersecurity" },
-  { slug: "technology", label: "Technology" },
-  { slug: "finance", label: "Finance" },
-  { slug: "world", label: "World" },
-  { slug: "music", label: "Music" },
-  { slug: "photography", label: "Photography" },
+  { slug: "cybersecurity", label: "資安" },
+  { slug: "technology", label: "科技" },
+  { slug: "finance", label: "財經" },
+  { slug: "world", label: "國際" },
+  { slug: "music", label: "音樂" },
+  { slug: "photography", label: "攝影" },
 ] as const;
 
 export type TopicSlug = (typeof topicFilters)[number]["slug"];
@@ -24,6 +24,8 @@ export interface FeedStory {
   topicLabel: string;
   contentType: "Current" | "Discovery";
   primaryUrl: string;
+  imageUrl: string | null;
+  finalScore: number;
   isRead: boolean;
   isSaved: boolean;
   isReadLater: boolean;

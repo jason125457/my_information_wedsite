@@ -13,10 +13,10 @@ export const feedbackReasonSchema = z.enum([
 export type FeedbackReason = z.infer<typeof feedbackReasonSchema>;
 
 export const feedbackReasons: Array<{ value: FeedbackReason; label: string }> = [
-  { value: "topic_not_interesting", label: "Topic not interesting" },
-  { value: "low_value_or_gossip", label: "Low value or gossip" },
-  { value: "too_technical", label: "Too technical" },
-  { value: "already_knew", label: "Already knew this" },
-  { value: "poor_source", label: "Poor source" },
-  { value: "do_not_recommend_type", label: "Do not recommend this type" },
+  { value: "topic_not_interesting", label: "對這個主題沒興趣" },
+  { value: "low_value_or_gossip", label: "太八卦／太廢" },
+  { value: "too_technical", label: "太技術" },
+  { value: "already_knew", label: "已經知道了" },
+  { value: "poor_source", label: "來源品質差" },
+  { value: "do_not_recommend_type", label: "不想再看到這類內容" },
 ];

@@ -2,19 +2,18 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Bookmark, Clock3, ExternalLink, Save, ThumbsDown } from "lucide-react";
+import { ArrowUpRight, Bookmark, Clock3, EyeOff } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { StoryMedia, StoryMeta, TopicChip, WhyLine } from "@/components/feed/story-parts";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { feedbackReasons, type FeedbackReason } from "@/lib/feed/state";
 import type { FeedStory } from "@/lib/feed/types";
 import { cn } from "@/lib/utils";
 
-interface FeedCardProps {
-  story: FeedStory;
-  feedbackOpen: boolean;
-  isPending: boolean;
+export interface StoryActions {
   canPersonalize: boolean;
+  isPending: boolean;
+  feedbackOpen: boolean;
   onRead: () => void;
   onToggleSaved: () => void;
   onToggleReadLater: () => void;
@@ -22,151 +21,138 @@ interface FeedCardProps {
   onDismiss: (reason: FeedbackReason) => void;
 }
 
-export function FeedCard({
-  story,
-  feedbackOpen,
-  isPending,
-  canPersonalize,
-  onRead,
-  onToggleSaved,
-  onToggleReadLater,
-  onToggleFeedback,
-  onDismiss,
-}: FeedCardProps) {
-  const [feedbackReason, setFeedbackReason] = useState<FeedbackReason>("topic_not_interesting");
-
+export function FeedCard({ story, actions }: { story: FeedStory; actions: StoryActions }) {
   return (
     <article
       className={cn(
-        "rounded-[1.6rem] border bg-[var(--surface)] p-5 transition sm:p-7",
-        story.isRead
-          ? "border-[var(--line)] opacity-70"
-          : "border-[var(--line-strong)] shadow-[0_16px_45px_rgba(31,41,55,0.055)]",
+        "group flex flex-col overflow-hidden rounded-2xl border bg-[var(--surface)] transition-[box-shadow,transform] duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_34px_-20px_rgba(24,24,27,0.45)]",
+        story.isRead ? "border-[var(--line)] opacity-65" : "border-[var(--line)]",
       )}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge className="border-blue-100 bg-[var(--accent-soft)] text-[var(--accent)]">
-          {story.topicLabel}
-        </Badge>
-        <Badge>{story.contentType}</Badge>
-        {story.isRead ? <span className="text-xs font-semibold text-[var(--muted)]">Read</span> : null}
+      <a href={story.primaryUrl} target="_blank" rel="noreferrer" onClick={actions.onRead} tabIndex={-1} aria-hidden="true">
+        <StoryMedia story={story} className="aspect-[16/10]" />
+      </a>
+      <div className="flex flex-1 flex-col gap-2.5 px-5 pt-4 pb-3">
+        <div className="flex items-center justify-between gap-3">
+          <TopicChip story={story} />
+          <span
+            className="rounded-md border border-[var(--line)] px-1.5 py-0.5 text-xs leading-4 font-semibold text-[var(--muted)] tabular-nums"
+            title="推薦分數"
+          >
+            <span className="sr-only">推薦分數 </span>
+            {story.finalScore}
+          </span>
+        </div>
+        <h3 className="font-serif text-[19px] leading-[1.42] font-bold text-[var(--ink)]">
+          <a href={story.primaryUrl} target="_blank" rel="noreferrer" onClick={actions.onRead} className="hover:underline decoration-[var(--line-strong)] underline-offset-4">
+            {story.title}
+          </a>
+        </h3>
+        <p className="line-clamp-3 text-[15px] leading-[1.7] text-[var(--ink-soft)]">{story.summary}</p>
+        <WhyLine story={story} />
+        <div className="mt-auto pt-1">
+          <StoryMeta story={story} />
+        </div>
+        <StoryActionBar story={story} actions={actions} />
       </div>
+    </article>
+  );
+}
 
-      <h2 className="mt-5 max-w-3xl text-[1.55rem] leading-[1.18] font-semibold tracking-[-0.025em] text-[var(--ink)] sm:text-[1.8rem]">
-        {story.title}
-      </h2>
-      <p className="mt-4 max-w-3xl text-base leading-7 text-[var(--ink-soft)]">
-        {story.summary}
-      </p>
+/** "Read original" plus the personal actions; shared by cards and the lead story. */
+export function StoryActionBar({ story, actions, tone = "paper" }: { story: FeedStory; actions: StoryActions; tone?: "paper" | "night" }) {
+  const [reason, setReason] = useState<FeedbackReason>("topic_not_interesting");
+  const iconButton = cn(
+    "grid size-10 place-items-center rounded-full transition-colors disabled:opacity-45",
+    tone === "paper"
+      ? "text-[var(--muted)] hover:bg-[var(--surface-subtle)] hover:text-[var(--ink)]"
+      : "text-zinc-400 hover:bg-white/10 hover:text-white",
+  );
 
-      <div className="mt-5 rounded-2xl border-l-2 border-[var(--accent)] bg-[var(--surface-subtle)] px-4 py-3.5">
-        <p className="text-xs font-bold tracking-[0.13em] text-[var(--muted)] uppercase">
-          Why this is here
-        </p>
-        <p className="mt-1.5 text-sm leading-6 text-[var(--ink-soft)]">
-          {story.whyRecommended}
-        </p>
-      </div>
-
-      <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-[var(--muted)]">
-        <span className="font-semibold text-[var(--ink-soft)]">{story.source}</span>
-        {story.sourceCount > 1 ? <span>+{story.sourceCount - 1} sources</span> : null}
-        <span aria-hidden="true">·</span>
-        <span className="inline-flex items-center gap-1.5">
-          <Clock3 aria-hidden="true" size={14} />
-          <time dateTime={story.publishedAt}>{story.publishedLabel}</time>
-        </span>
-      </div>
-
-      <div className="mt-6 flex flex-wrap gap-2 border-t border-[var(--line)] pt-5">
+  return (
+    <div className={cn("border-t pt-3", tone === "paper" ? "border-[var(--line)]" : "border-[var(--night-line)]")}>
+      <div className="flex items-center gap-1">
         <a
           href={story.primaryUrl}
           target="_blank"
           rel="noreferrer"
-          onClick={onRead}
-          className={buttonVariants({ variant: "primary", size: "sm" })}
+          onClick={actions.onRead}
+          className={cn(
+            buttonVariants({ variant: "primary", size: "sm" }),
+            "mr-auto h-10",
+            tone === "night" && "bg-white text-[var(--ink)] hover:bg-zinc-200",
+          )}
         >
-          View original
-          <ExternalLink aria-hidden="true" size={15} />
+          閱讀原文
+          <ArrowUpRight aria-hidden="true" size={15} />
         </a>
-        {canPersonalize ? (
+        {actions.canPersonalize ? (
           <>
-            <Button
+            <button
               type="button"
-              size="sm"
-              variant={story.isReadLater ? "primary" : "secondary"}
+              className={iconButton}
+              aria-label={story.isReadLater ? "移出稍後閱讀" : "稍後閱讀"}
               aria-pressed={story.isReadLater}
-              disabled={isPending}
-              onClick={onToggleReadLater}
+              title="稍後閱讀"
+              disabled={actions.isPending}
+              onClick={actions.onToggleReadLater}
             >
-              <Bookmark
-                aria-hidden="true"
-                size={15}
-                fill={story.isReadLater ? "currentColor" : "none"}
-              />
-              Read later
-            </Button>
-            <Button
+              <Clock3 aria-hidden="true" size={18} className={story.isReadLater ? "text-[var(--accent)]" : undefined} />
+            </button>
+            <button
               type="button"
-              size="sm"
-              variant={story.isSaved ? "primary" : "secondary"}
+              className={iconButton}
+              aria-label={story.isSaved ? "取消收藏" : "收藏"}
               aria-pressed={story.isSaved}
-              disabled={isPending}
-              onClick={onToggleSaved}
+              title="收藏"
+              disabled={actions.isPending}
+              onClick={actions.onToggleSaved}
             >
-              <Save
-                aria-hidden="true"
-                size={15}
-                fill={story.isSaved ? "currentColor" : "none"}
-              />
-              Save
-            </Button>
-            <Button
+              <Bookmark aria-hidden="true" size={18} fill={story.isSaved ? "currentColor" : "none"} className={story.isSaved ? "text-[var(--accent)]" : undefined} />
+            </button>
+            <button
               type="button"
-              size="sm"
-              variant="danger"
-              aria-expanded={feedbackOpen}
-              disabled={isPending}
-              onClick={onToggleFeedback}
+              className={iconButton}
+              aria-label="不感興趣"
+              aria-expanded={actions.feedbackOpen}
+              title="不感興趣"
+              disabled={actions.isPending}
+              onClick={actions.onToggleFeedback}
             >
-              <ThumbsDown aria-hidden="true" size={15} />
-              Not interested
-            </Button>
+              <EyeOff aria-hidden="true" size={18} />
+            </button>
           </>
         ) : (
-          <Link href="/login" className={buttonVariants({ variant: "secondary", size: "sm" })}>
-            Sign in to personalize
+          <Link
+            href="/login"
+            className={cn("rounded-full px-3 py-2 text-[13px] font-medium", tone === "paper" ? "text-[var(--muted)] hover:bg-[var(--surface-subtle)]" : "text-zinc-400 hover:bg-white/10")}
+          >
+            登入以收藏
           </Link>
         )}
       </div>
 
-      {feedbackOpen ? (
-        <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface-subtle)] p-4 sm:flex-row sm:items-end">
-          <label className="flex-1 text-sm font-semibold text-[var(--ink)]">
-            Tell the feed why
+      {actions.feedbackOpen ? (
+        <div className={cn("mt-3 flex flex-col gap-2 rounded-xl p-3 sm:flex-row sm:items-end", tone === "paper" ? "bg-[var(--surface-subtle)]" : "bg-white/5")}>
+          <label className="flex-1 text-[13px] font-medium">
+            為什麼不想看？
             <select
-              value={feedbackReason}
-              onChange={(event) => setFeedbackReason(event.target.value as FeedbackReason)}
-              className="mt-2 h-10 w-full rounded-xl border border-[var(--line-strong)] bg-white px-3 text-sm font-normal"
+              value={reason}
+              onChange={(event) => setReason(event.target.value as FeedbackReason)}
+              className="mt-1.5 h-10 w-full rounded-lg border border-[var(--line-strong)] bg-white px-3 text-sm font-normal text-[var(--ink)]"
             >
-              {feedbackReasons.map((reason) => (
-                <option key={reason.value} value={reason.value}>
-                  {reason.label}
+              {feedbackReasons.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
           </label>
-          <Button
-            type="button"
-            size="sm"
-            variant="primary"
-            disabled={isPending}
-            onClick={() => onDismiss(feedbackReason)}
-          >
-            Hide story
+          <Button type="button" size="sm" variant="primary" className="h-10" disabled={actions.isPending} onClick={() => actions.onDismiss(reason)}>
+            隱藏這則
           </Button>
         </div>
       ) : null}
-    </article>
+    </div>
   );
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 import { AppHeader } from "@/components/app-header";
 import { getOptionalAuthenticatedUser } from "@/lib/auth/require-user";
@@ -14,22 +14,36 @@ export default async function DigestPage() {
   return (
     <>
       <AppHeader email={user?.email} />
-      <main className="mx-auto max-w-5xl px-5 py-10 sm:px-8 sm:py-14">
-        <p className="text-sm font-semibold text-[var(--accent)]">Daily Digest</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">A finite daily briefing</h1>
-        <div className="mt-8 space-y-3">
-          {digests.length ? digests.map((digest) => (
-            <Link key={digest.id} href={`/digest/${digest.date}`} className="flex items-center justify-between gap-5 rounded-2xl border border-[var(--line)] bg-white p-5 hover:border-[var(--line-strong)]">
-              <span>
-                <span className="flex items-center gap-2 font-semibold"><CalendarDays size={16} aria-hidden="true" />{digest.title}</span>
-                <span className="mt-1 block text-sm text-[var(--muted)]">{digest.summary}</span>
-              </span>
-              <span className="shrink-0 text-sm font-semibold text-[var(--accent)]">{digest.itemCount} items</span>
-            </Link>
-          )) : (
-            <p className="rounded-2xl border border-dashed border-[var(--line-strong)] bg-white p-8 text-center text-[var(--muted)]">The first digest will appear after the 22:00 Taipei schedule runs.</p>
+      <main className="mx-auto max-w-3xl px-5 sm:px-8">
+        <header className="border-b-2 border-[var(--ink)] pt-10 pb-5">
+          <p className="text-xs font-semibold tracking-[0.14em] text-[var(--accent)] uppercase">每日精選</p>
+          <h1 className="mt-1 font-serif text-[clamp(32px,5vw,50px)] leading-[1.08] font-semibold tracking-[-0.02em]">
+            有限的一份日報
+          </h1>
+          <p className="mt-2 text-sm text-[var(--muted)]">每晚 22:00 從當天最值得看的內容中挑出 15–20 則，寧缺勿濫。</p>
+        </header>
+        <ol className="mt-2">
+          {digests.length ? (
+            digests.map((digest) => (
+              <li key={digest.id} className="border-b border-[var(--line)]">
+                <Link href={`/digest/${digest.date}`} className="group flex items-center justify-between gap-5 py-5">
+                  <span>
+                    <span className="block font-serif text-xl font-bold">{digest.title}</span>
+                    <span className="mt-1 block text-sm text-[var(--muted)]">{digest.summary}</span>
+                  </span>
+                  <span className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-[var(--accent)]">
+                    {digest.itemCount} 則
+                    <ArrowRight aria-hidden="true" size={15} className="transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </Link>
+              </li>
+            ))
+          ) : (
+            <li className="mt-8 rounded-2xl border border-dashed border-[var(--line-strong)] bg-[var(--surface)] p-8 text-center text-[var(--muted)]">
+              第一份每日精選會在今晚 22:00（台北時間）排程執行後出現。
+            </li>
           )}
-        </div>
+        </ol>
       </main>
     </>
   );

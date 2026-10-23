@@ -11,5 +11,5 @@ export default async function DailyDigestPage({ params }: { params: Promise<{ da
   const { supabase, user } = await getOptionalAuthenticatedUser();
   const digest = await loadDailyDigestStories(supabase, user?.id ?? null, date);
   if (!digest) notFound();
-  return <FeedPage email={user?.email} stories={digest.stories} eyebrow="Daily Digest" heading={digest.title} canPersonalize={Boolean(user)} />;
+  return <FeedPage email={user?.email} stories={digest.stories} eyebrow="每日精選" heading={digest.title} canPersonalize={Boolean(user)} />;
 }
