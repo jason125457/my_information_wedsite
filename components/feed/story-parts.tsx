@@ -29,7 +29,16 @@ export function TopicChip({ story, tone = "paper" }: { story: FeedStory; tone?: 
  * none or the publisher refuses to serve it. Images stay on the publisher's
  * host; no-referrer avoids hotlink blocks that key on the Referer header.
  */
-export function StoryMedia({ story, className }: { story: FeedStory; className?: string }) {
+export function StoryMedia({
+  story,
+  className,
+  priority = false,
+}: {
+  story: FeedStory;
+  className?: string;
+  /** Above-the-fold images load eagerly instead of lazily. */
+  priority?: boolean;
+}) {
   const [failed, setFailed] = useState(false);
   const showImage = story.imageUrl && !failed;
 
@@ -46,7 +55,8 @@ export function StoryMedia({ story, className }: { story: FeedStory; className?:
         <img
           src={story.imageUrl!}
           alt=""
-          loading="lazy"
+          loading={priority ? "eager" : "lazy"}
+          fetchPriority={priority ? "high" : "auto"}
           decoding="async"
           referrerPolicy="no-referrer"
           onError={() => setFailed(true)}

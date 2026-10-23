@@ -250,7 +250,7 @@ function LeadStory({ story, actions }: { story: FeedStory; actions: StoryActions
   return (
     <article>
       <a href={story.primaryUrl} target="_blank" rel="noreferrer" onClick={actions.onRead} tabIndex={-1} aria-hidden="true">
-        <StoryMedia story={story} className="aspect-video rounded-2xl" />
+        <StoryMedia story={story} className="aspect-video rounded-2xl" priority />
       </a>
       <div className="mt-5 space-y-3">
         <TopicChip story={story} />
