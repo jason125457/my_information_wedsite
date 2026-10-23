@@ -70,7 +70,8 @@ MVP 不建立獨立 backend service。
   - **程式計算**：`content_type`（來源設定）、`fact_status`（來源可靠度）、`freshness`（發布時間衰減）、`discussion_popularity`（Hacker News 分數／留言，無資料為中性 3）。見 `lib/pipeline/signals.ts`。
   - **AI 只判斷**：主題、`interest_relevance`、`information_value`、`importance`、`discovery_value`，並要求嚴格使用 1–5 全範圍。分類批次提高到 40 則。
   - **關鍵字預過濾**：促銷、贈獎、贊助內容在 AI 之前丟棄（`lib/pipeline/prefilter.ts`）。
-  - **每輪配額**：每輪最多 10 則、每個主題最多 3 則（`maxStories`／`maxPerTopic`）；品質下限 `final_score >= 60`。超出配額的候選已評估、不再重試。
+  - **每輪配額**：每輪最多 10 則、每個主題最多 3 則、每個來源最多 2 則（`maxStories`／`maxPerTopic`／`maxPerSource`）；品質下限 `final_score >= 60`。超出配額的候選已評估、不再重試。
+  - **中文標題檢查**：摘要標題不含中文字時，該則重新摘要一次；仍失敗則保留原結果。
   - **每日精選**：單一主題最多佔 25%。
 
 Discovery 搜尋結果必須保存 URL、Title、Source 與 citation metadata，UI 必須顯示清楚且可點擊的原始來源。
@@ -117,7 +118,14 @@ interface Collector {
 
 依序偏好官方 RSS／publisher RSS、正式 API、允許存取的公開網頁抽取。MVP 不建立大型新聞爬蟲。
 
-### Gemini Google Search grounding（尚未實作）
+### 程式化探索（2026-10-23）
+
+免費版 Gemini 額度不適合做網路搜尋，因此 Discovery 改用不需 AI 的來源，再走同一套評分流程：
+- **Google 新聞搜尋 RSS**（`news.google.com/rss/search?q=...`）：以關鍵字訂閱，`when:Nd` 限定近期，`config.maxItems` 限制每輪數量。目前用於台灣攝影景點、銀河星空、季節賞景與 shoegaze／dream pop。連結為 Google 新聞轉址頁，標題含「 - 媒體名」後綴（摘要時會移除）。
+- **Hacker News Show HN**（`list: showstories`）：使用者分享的新工具。
+- YouTube 頻道 feed 自 2026-10 起間歇回應 404／500，KEXP 已停用，改用 Gorilla vs. Bear。
+
+### Gemini Google Search grounding（未來選項）
 
 用於 Discovery，包括新 AI 工具、樂團、攝影景點、文章與潛在優質來源。
 

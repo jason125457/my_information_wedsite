@@ -63,7 +63,7 @@ Prefer official APIs:
 - Reddit: official public RSS feeds (no OAuth app), fetched sequentially
 - Hacker News: official API
 - YouTube: official channel uploads feed (no API key)
-- Discovery: Gemini Google Search grounding (not yet built)
+- Discovery: Google News search RSS and Hacker News Show HN (programmatic, no AI search)
 
 Do not introduce scraping workarounds to avoid an API.
 

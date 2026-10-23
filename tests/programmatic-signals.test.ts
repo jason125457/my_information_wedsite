@@ -123,7 +123,7 @@ describe("per-run topic caps", () => {
       summarizeMany: async (batch: Array<{ candidate: NormalizedCandidate }>) =>
         batch.map(({ candidate: item }): StorySummary => {
           summarized.push(item.externalId ?? "");
-          return { title: item.title, summary: "One. Two.", why_recommended: "Why." };
+          return { title: `中文：${item.title}`, summary: "一。二。", why_recommended: "理由。" };
         }),
       decideDuplicate: vi.fn(async () => ({ same_event: false, confidence: 0.9, reason: "different" })),
     } as unknown as StoryAIEditor;
@@ -205,5 +205,67 @@ describe("daily digest topic share", () => {
     );
     expect(picks.filter((pick) => pick.primaryTopicId === "ai")).toHaveLength(2);
     expect(picks).toHaveLength(4);
+  });
+});
+
+describe("untranslated titles", () => {
+  it("re-asks once for English titles and keeps the first answer if still English", async () => {
+    let calls = 0;
+    const editor = {
+      classifyMany: async (batch: NormalizedCandidate[]) => batch.map(() => judgement),
+      summarizeMany: async (batch: Array<{ candidate: NormalizedCandidate }>) => {
+        calls += 1;
+        return batch.map(({ candidate: item }): StorySummary => {
+          const english = calls === 1 || item.externalId === "stubborn";
+          return {
+            title: english ? `${item.title} (English)` : `中文標題：${item.externalId}`,
+            summary: "一。二。",
+            why_recommended: "理由。",
+          };
+        });
+      },
+      decideDuplicate: vi.fn(async () => ({ same_event: false, confidence: 0.9, reason: "different" })),
+    } as unknown as StoryAIEditor;
+
+    const result = await processCandidates(
+      [
+        candidate({ externalId: "fixable", canonicalUrl: "https://a.example/1", url: "https://a.example/1", title: "Anthropic ships a coding agent" }),
+        candidate({ externalId: "stubborn", canonicalUrl: "https://b.example/2", url: "https://b.example/2", title: "Gemini adds video understanding", topic: "technology" }),
+      ],
+      editor,
+      { now, minimumScore: 0 },
+    );
+
+    expect(calls).toBe(2);
+    const titles = Object.fromEntries(result.stories.map((story) => [story.candidate.externalId, story.summary.title]));
+    expect(titles.fixable).toBe("中文標題：fixable");
+    expect(titles.stubborn).toBe("Gemini adds video understanding (English)");
+  });
+});
+
+describe("per-run source cap", () => {
+  it("lets one source contribute at most two new stories per run", async () => {
+    const titles = [
+      "Open source agent framework for browsers",
+      "Declarative language for physical machines",
+      "Turn pull requests into behind the scenes posts",
+      "Self hosted dead man switch for founders",
+    ];
+    const editor = {
+      classifyMany: async (batch: NormalizedCandidate[]) => batch.map(() => judgement),
+      summarizeMany: async (batch: Array<{ candidate: NormalizedCandidate }>) =>
+        batch.map(({ candidate: item }): StorySummary => ({ title: `中文：${item.title}`, summary: "一。二。", why_recommended: "理由。" })),
+      decideDuplicate: vi.fn(async () => ({ same_event: false, confidence: 0.9, reason: "different" })),
+    } as unknown as StoryAIEditor;
+
+    const result = await processCandidates(
+      titles.map((title, i) =>
+        candidate({ sourceId: "show-hn", externalId: `hn-${i}`, canonicalUrl: `https://hn${i}.example/x`, url: `https://hn${i}.example/x`, title, topic: i % 2 ? "technology" : "ai" }),
+      ),
+      editor,
+      { now, minimumScore: 0 },
+    );
+
+    expect(result.stories).toHaveLength(2);
   });
 });

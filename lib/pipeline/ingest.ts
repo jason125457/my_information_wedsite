@@ -514,6 +514,8 @@ export function createCollectorFromSource(
         feedUrl,
         topic,
         isDiscovery: source.is_discovery,
+        // Search feeds (e.g. Google News) return many items; let a source cap them.
+        maxItems: typeof config.maxItems === "number" ? config.maxItems : undefined,
         fetchImplementation,
       });
     }
@@ -522,12 +524,14 @@ export function createCollectorFromSource(
       const list = (typeof config.list === "string" ? config.list : "topstories") as
         | "topstories"
         | "beststories"
-        | "newstories";
+        | "newstories"
+        | "showstories";
       return new HackerNewsCollector({
         sourceId: source.id,
         sourceName: source.name,
         list,
         topic,
+        isDiscovery: source.is_discovery,
         fetchImplementation,
       });
     }
