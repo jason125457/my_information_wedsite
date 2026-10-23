@@ -99,6 +99,11 @@ function createMockSupabase(initialState?: Partial<MockDatabaseState>) {
                 const data = state.rawItems.filter((r) => set.has(r.canonical_url));
                 return Promise.resolve({ data, error: null });
               }
+              if (tableName === "raw_items" && col === "external_id") {
+                const set = new Set(values);
+                const data = state.rawItems.filter((r) => set.has(r.external_id));
+                return Promise.resolve({ data, error: null });
+              }
               return Promise.resolve({ data: [], error: null });
             },
             then: (onfulfilled: (res: { data: unknown; error: null }) => unknown) => {
@@ -481,5 +486,39 @@ describe("Per-run candidate cap", () => {
 
     const persisted = mockSupabase.state.rawItems.map((item) => item.source_id).sort();
     expect(persisted).toEqual(["source-busy", "source-busy", "source-quiet", "source-quiet"]);
+  });
+});
+
+describe("Existing feed ids with a changed URL", () => {
+  it("skips an item whose source and external id are already stored", async () => {
+    const mockFetch = vi.fn(async () =>
+      new Response(mockRssXml, { status: 200, headers: { "Content-Type": "application/xml" } }),
+    );
+    const mockSupabase = createMockSupabase({
+      rawItems: [
+        {
+          id: "raw-existing",
+          source_id: "source-1",
+          external_id: "article-101",
+          url: "https://example.com/old-path/article-101",
+          canonical_url: "https://example.com/old-path/article-101",
+          title: "New AI Model Released Today",
+          excerpt: null,
+          published_at: null,
+          fetched_at: new Date().toISOString(),
+          raw_metadata: {},
+        } as RawItemRow,
+      ],
+    });
+
+    const result = await ingestSources({
+      supabase: mockSupabase as unknown as IngestOptions["supabase"],
+      editor: createMockEditor(),
+      fetchImplementation: mockFetch as typeof fetch,
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(result.totals.duplicates).toBe(1);
+    expect(mockSupabase.state.rawItems).toHaveLength(1);
   });
 });
