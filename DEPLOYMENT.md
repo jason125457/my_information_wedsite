@@ -46,7 +46,21 @@ Secrets:
 
 Variables (optional; defaults shown in `.github/workflows/jobs.yml`): `GEMINI_MODEL_FAST`, `GEMINI_MODEL_QUALITY`, `GEMINI_MIN_INTERVAL_MS`, `APP_URL`.
 
-Then run **Actions → Scheduled jobs → Run workflow** with `ingest` once to fill the feed. The schedule then runs ingestion every 2 hours, the Daily Digest at 22:07 Asia/Taipei, and the weekly review on Sundays at 21:07. A keepalive step stops GitHub from disabling the schedule after 60 quiet days.
+Then run **Actions → Scheduled jobs → Run workflow** with `ingest` once to fill the feed.
+
+### Scheduler (Cloudflare Worker)
+
+GitHub's own `schedule` events proved unreliable (delayed by hours or skipped), so `scheduler/` is a tiny Worker whose hourly Cron Trigger (`23 * * * *`) calls the workflow's `workflow_dispatch`: ingestion every even UTC hour, the Daily Digest at 22:23 Taipei right after that hour's ingest, and the weekly review on Sundays at 21:23.
+
+1. Create a fine-grained GitHub token at github.com/settings/personal-access-tokens/new: only this repository, **Actions: Read and write**.
+2. Deploy and store the token:
+
+   ```powershell
+   npx wrangler deploy --config scheduler/wrangler.jsonc
+   npx wrangler secret put GITHUB_TOKEN --config scheduler/wrangler.jsonc
+   ```
+
+The Worker has no public route (`workers_dev: false`). Its logs (Cloudflare dashboard → Workers → personal-feed-scheduler → Logs) show each dispatch.
 
 ## 4. Cloudflare Workers (web app)
 

@@ -1,13 +1,14 @@
 name: Scheduled jobs
 
-# Ingestion and the Daily Digest run here instead of on the web host:
-# GitHub Actions is free for public repositories and has no short function
-# time limit, and the regular writes keep the free Supabase project active.
+# Ingestion, the Daily Digest and the weekly review run here instead of on the
+# web host: GitHub Actions is free for public repositories and has no short
+# function time limit, and the regular writes keep the free Supabase project
+# active.
+#
+# They are started by the personal-feed-scheduler Cloudflare Worker
+# (scheduler/), whose hourly cron calls workflow_dispatch. GitHub's own
+# `schedule` events were delayed by hours or skipped, so none are used here.
 on:
-  schedule:
-    - cron: "23 */2 * * *" # ingest every 2 hours (GitHub may start a few minutes late)
-    - cron: "7 14 * * *" # Daily Digest at 22:07 Asia/Taipei
-    - cron: "7 13 * * 0" # Weekly review on Sunday at 21:07 Asia/Taipei
   workflow_dispatch:
     inputs:
       job:
@@ -16,13 +17,14 @@ on:
         options: [ingest, digest, weekly]
         default: ingest
 
+# Runs queue instead of overlapping, so a digest dispatched right after an
+# ingest waits for it and sees its stories.
 concurrency:
   group: scheduled-jobs
   cancel-in-progress: false
 
 permissions:
   contents: read
-  actions: write # only for the keepalive step below
 
 jobs:
   run:
@@ -48,21 +50,13 @@ jobs:
       - run: npm ci
 
       - name: Ingest sources
-        if: github.event.schedule == '23 */2 * * *' || inputs.job == 'ingest'
+        if: inputs.job == 'ingest'
         run: npm run job:ingest
 
       - name: Generate Daily Digest
-        if: github.event.schedule == '7 14 * * *' || inputs.job == 'digest'
+        if: inputs.job == 'digest'
         run: npm run job:digest
 
       - name: Generate weekly review
-        if: github.event.schedule == '7 13 * * 0' || inputs.job == 'weekly'
+        if: inputs.job == 'weekly'
         run: npm run job:weekly
-
-      # GitHub disables scheduled workflows after 60 days without repository
-      # activity. Re-enabling the workflow once a day resets that timer.
-      - name: Keep schedule alive
-        if: github.event.schedule == '7 14 * * *'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh api --method PUT "repos/${{ github.repository }}/actions/workflows/jobs.yml/enable"

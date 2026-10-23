@@ -1,0 +1,19 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "personal-feed-scheduler",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // One hourly trigger (the free plan allows 5 per account); src/schedule.ts
+  // decides which jobs each tick starts.
+  "triggers": {
+    "crons": ["23 * * * *"]
+  },
+  // No public URL: this Worker only runs on its schedule.
+  "workers_dev": false,
+  "vars": {
+    "GITHUB_REPOSITORY": "jason125457/my_information_wedsite"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
