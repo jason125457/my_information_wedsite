@@ -73,7 +73,7 @@ export async function loadStoriesByIds(
     profileId
       ? supabase
           .from("story_state")
-          .select("story_id,is_read,is_saved,is_read_later,is_not_interested")
+          .select("story_id,is_read,is_saved,is_read_later,is_not_interested,saved_at")
           .eq("profile_id", profileId)
           .in("story_id", foundStoryIds)
       : Promise.resolve({ data: [], error: null }),
@@ -139,6 +139,7 @@ export async function loadStoriesByIds(
       finalScore: Math.round(Number(story.final_score)),
       isRead: state?.is_read ?? false,
       isSaved: state?.is_saved ?? false,
+      savedAt: state?.saved_at ?? null,
       isReadLater: state?.is_read_later ?? false,
       isNotInterested: state?.is_not_interested ?? false,
     });
@@ -167,7 +168,8 @@ export async function loadFeed(
       .eq("profile_id", profileId)
       .eq("is_saved", true)
       .order("saved_at", { ascending: false })
-      .limit(100);
+      // The knowledge base is searched in the browser, so load all of it.
+      .limit(500);
 
     if (error) throw new Error(`Unable to load saved stories: ${error.message}`);
     if (!stateRows || !stateRows.length) return [];

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Inbox } from "lucide-react";
+import { CheckCircle2, Inbox, Search } from "lucide-react";
 import { flushSync } from "react-dom";
 
 import { FeedCard, StoryActionBar, type StoryActions } from "@/components/feed/feed-card";
@@ -14,6 +14,14 @@ import {
   setStorySaved,
   type StoryActionResult,
 } from "@/app/actions/story-state";
+import {
+  emptySavedSearch,
+  savedPeriods,
+  savedSources,
+  searchSaved,
+  type SavedPeriod,
+  type SavedSearch,
+} from "@/lib/feed/saved-search";
 import type { FeedbackReason } from "@/lib/feed/state";
 import { topicFilters, type FeedStory, type TopicSlug } from "@/lib/feed/types";
 import { cn } from "@/lib/utils";
@@ -33,6 +41,7 @@ const DISCOVERY_COUNT = 3;
 
 export function FeedList({ initialStories, view = "all", layout = "list", canPersonalize = false }: FeedListProps) {
   const [selectedTopic, setSelectedTopic] = useState<TopicSlug>("all");
+  const [savedSearch, setSavedSearch] = useState<SavedSearch>(emptySavedSearch);
   const [stories, setStories] = useState(initialStories);
   const [shownCount, setShownCount] = useState(FIRST_PAGE);
   const [feedbackStoryId, setFeedbackStoryId] = useState<string | null>(null);
@@ -47,8 +56,9 @@ export function FeedList({ initialStories, view = "all", layout = "list", canPer
       if (view === "history") return story.isRead;
       return true;
     });
-    return selectedTopic === "all" ? inView : inView.filter((story) => story.topic === selectedTopic);
-  }, [selectedTopic, stories, view]);
+    const searched = view === "saved" ? searchSaved(inView, savedSearch) : inView;
+    return selectedTopic === "all" ? searched : searched.filter((story) => story.topic === selectedTopic);
+  }, [savedSearch, selectedTopic, stories, view]);
 
   // The front page splits the stories into a lead, a side list, an evergreen
   // discovery band and the grid; a topic filter shows the plain grid.
@@ -66,6 +76,18 @@ export function FeedList({ initialStories, view = "all", layout = "list", canPer
     const grid = afterSide.filter((story) => !discovery.includes(story));
     return { lead, side, discovery, grid };
   }, [layout, selectedTopic, visibleStories]);
+
+  // "Today's edition" is what the front page shows before 再看更多: the lead,
+  // the side list, the first page of the grid and the discovery band. Reading
+  // all of it gives the day a clear end.
+  const edition = useMemo(
+    () =>
+      sections.lead
+        ? [sections.lead, ...sections.side, ...sections.grid.slice(0, FIRST_PAGE), ...sections.discovery]
+        : [],
+    [sections],
+  );
+  const editionRead = edition.filter((story) => story.isRead).length;
 
   const gridShown = sections.grid.slice(0, shownCount);
   const remaining = sections.grid.length - gridShown.length;
@@ -156,6 +178,22 @@ export function FeedList({ initialStories, view = "all", layout = "list", canPer
 
   return (
     <div>
+      {layout === "front" && canPersonalize && edition.length ? (
+        <TodayProgress total={edition.length} read={editionRead} />
+      ) : null}
+
+      {view === "saved" ? (
+        <SavedSearchPanel
+          search={savedSearch}
+          sources={savedSources(stories.filter((story) => story.isSaved && !story.isNotInterested))}
+          resultCount={visibleStories.length}
+          onChange={(next) => {
+            setSavedSearch(next);
+            setShownCount(FIRST_PAGE);
+          }}
+        />
+      ) : null}
+
       {errorMessage ? (
         <p role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {errorMessage}
@@ -243,6 +281,96 @@ export function FeedList({ initialStories, view = "all", layout = "list", canPer
 
       {sections.discovery.length ? <DiscoveryBand stories={sections.discovery} actionsFor={actionsFor} /> : null}
     </div>
+  );
+}
+
+function TodayProgress({ total, read }: { total: number; read: number }) {
+  const done = read >= total;
+  return (
+    <section
+      aria-label="今日進度"
+      className={cn(
+        "mt-6 flex flex-col gap-3 rounded-2xl border px-5 py-4 sm:flex-row sm:items-center sm:gap-6",
+        done ? "border-[color-mix(in_srgb,var(--accent)_35%,white)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--surface)]",
+      )}
+    >
+      <p className="flex shrink-0 items-center gap-2 text-sm font-medium">
+        {done ? <CheckCircle2 aria-hidden="true" size={18} className="text-[var(--accent)]" /> : null}
+        {done ? "今天看完了，可以安心離開。" : `今日精選 ${total} 則 · 已讀 ${read} 則`}
+      </p>
+      <div
+        role="progressbar"
+        aria-label="今日精選閱讀進度"
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={read}
+        className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--surface-subtle)]"
+      >
+        <div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-500" style={{ width: `${Math.round((read / total) * 100)}%` }} />
+      </div>
+      {!done ? <p className="shrink-0 text-[13px] text-[var(--muted)]">點「閱讀原文」會自動記為已讀</p> : null}
+    </section>
+  );
+}
+
+function SavedSearchPanel({
+  search,
+  sources,
+  resultCount,
+  onChange,
+}: {
+  search: SavedSearch;
+  sources: string[];
+  resultCount: number;
+  onChange: (next: SavedSearch) => void;
+}) {
+  const filtered = search.query || search.source !== "all" || search.period !== "all";
+  const field = "h-11 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 text-[15px] text-[var(--ink)]";
+  return (
+    <section aria-label="搜尋收藏" className="mt-6 grid gap-3 rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-4 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+      <label className="block text-[13px] font-medium text-[var(--muted)]">
+        關鍵字
+        <span className="relative mt-1.5 block">
+          <Search aria-hidden="true" size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-[var(--muted)]" />
+          <input
+            type="search"
+            value={search.query}
+            onChange={(event) => onChange({ ...search, query: event.target.value })}
+            placeholder="標題、摘要、來源…"
+            className={cn(field, "w-full pl-9")}
+          />
+        </span>
+      </label>
+      <label className="block text-[13px] font-medium text-[var(--muted)]">
+        來源
+        <select value={search.source} onChange={(event) => onChange({ ...search, source: event.target.value })} className={cn(field, "mt-1.5 block w-full sm:w-48")}>
+          <option value="all">所有來源</option>
+          {sources.map((source) => (
+            <option key={source} value={source}>
+              {source}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block text-[13px] font-medium text-[var(--muted)]">
+        收藏時間
+        <select value={search.period} onChange={(event) => onChange({ ...search, period: event.target.value as SavedPeriod })} className={cn(field, "mt-1.5 block w-full sm:w-36")}>
+          {savedPeriods.map((period) => (
+            <option key={period.value} value={period.value}>
+              {period.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="text-[13px] text-[var(--muted)] sm:col-span-3" aria-live="polite">
+        {filtered ? `找到 ${resultCount} 則` : `共 ${resultCount} 則收藏`}
+        {filtered ? (
+          <button type="button" onClick={() => onChange(emptySavedSearch)} className="ml-3 font-medium text-[var(--accent)] hover:underline">
+            清除條件
+          </button>
+        ) : null}
+      </p>
+    </section>
   );
 }
 

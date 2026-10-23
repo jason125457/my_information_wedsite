@@ -10,13 +10,18 @@ export interface NavItem {
   label: string;
 }
 
-/** Primary navigation with the current page highlighted. */
+/** Primary navigation; the longest matching href is the current page. */
 export function NavLinks({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
+  const matches = (href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`));
+  const current = items
+    .filter((item) => matches(item.href))
+    .sort((first, second) => second.href.length - first.href.length)[0]?.href;
+
   return (
     <>
       {items.map((item) => {
-        const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+        const active = item.href === current;
         return (
           <Link
             key={item.href}

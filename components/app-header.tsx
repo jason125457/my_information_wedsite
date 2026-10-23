@@ -12,7 +12,7 @@ const navigation: NavItem[] = [
   { href: "/history", label: "歷史" },
 ];
 
-const privateNavigation: NavItem[] = [{ href: "/settings/jobs", label: "排程紀錄" }];
+const privateNavigation: NavItem[] = [{ href: "/settings", label: "設定" }];
 
 export function AppHeader({ email }: { email?: string }) {
   return (
