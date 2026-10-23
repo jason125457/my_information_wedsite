@@ -1,60 +1,44 @@
 import Link from "next/link";
-import { LogIn, LogOut, Sparkles } from "lucide-react";
+import { LogIn, LogOut } from "lucide-react";
 
 import { signOut } from "@/app/login/actions";
-import { Button } from "@/components/ui/button";
+import { NavLinks, type NavItem } from "@/components/nav-links";
 
-const navigation = [
-  { href: "/", label: "For You" },
-  { href: "/digest", label: "Digest" },
-  { href: "/saved", label: "Saved" },
-  { href: "/read-later", label: "Read Later" },
-  { href: "/history", label: "History" },
+const navigation: NavItem[] = [
+  { href: "/", label: "今日" },
+  { href: "/digest", label: "每日精選" },
+  { href: "/saved", label: "收藏" },
+  { href: "/read-later", label: "稍後閱讀" },
+  { href: "/history", label: "歷史" },
 ];
 
-const privateNavigation = [{ href: "/settings/jobs", label: "Jobs" }];
+const privateNavigation: NavItem[] = [{ href: "/settings/jobs", label: "排程紀錄" }];
 
 export function AppHeader({ email }: { email?: string }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-[var(--line)] bg-[rgb(246_248_251_/_0.9)] backdrop-blur-xl">
-      <div className="mx-auto flex min-h-17 max-w-5xl flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-8">
-        <Link href="/" className="flex items-center gap-3">
-          <span className="grid size-9 place-items-center rounded-xl bg-[var(--ink)] text-white">
-            <Sparkles aria-hidden="true" size={17} />
-          </span>
-          <span>
-            <span className="block text-sm font-bold tracking-[-0.01em]">Personal Feed</span>
-            <span className="hidden text-xs text-[var(--muted)] sm:block">Less, but better.</span>
-          </span>
+    <header id="top" className="sticky top-0 z-20 border-b border-[var(--line)] bg-[color-mix(in_srgb,var(--background)_88%,transparent)] backdrop-blur-md">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 sm:px-8">
+        <Link href="/" className="leading-none">
+          <span className="block font-serif text-[22px] font-semibold tracking-[-0.01em]">Personal Feed</span>
+          <span className="mt-1 block text-[11px] font-medium tracking-[0.16em] text-[var(--muted)] uppercase">Less, but better</span>
         </Link>
 
-        <nav className="order-3 flex w-full gap-1 overflow-x-auto sm:order-2 sm:w-auto" aria-label="Personal Feed">
-          {[...navigation, ...(email ? privateNavigation : [])].map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="shrink-0 rounded-lg px-3 py-2 text-sm font-semibold text-[var(--muted)] hover:bg-white hover:text-[var(--ink)]"
-            >
-              {item.label}
-            </Link>
-          ))}
+        <nav aria-label="主要導覽" className="order-3 -mx-1 flex w-full gap-1 overflow-x-auto px-1 [scrollbar-width:none] sm:order-2 sm:ml-auto sm:w-auto">
+          <NavLinks items={[...navigation, ...(email ? privateNavigation : [])]} />
         </nav>
 
-        <div className="order-2 flex items-center gap-2 sm:order-3">
-          {email ? (
-            <span className="hidden max-w-40 truncate text-sm text-[var(--muted)] lg:block">{email}</span>
-          ) : null}
+        <div className="order-2 ml-auto sm:order-3 sm:ml-0">
           {email ? (
             <form action={signOut}>
-              <Button type="submit" variant="ghost" size="sm" aria-label="Sign out">
-                <LogOut aria-hidden="true" size={16} />
-                <span className="hidden lg:inline">Sign out</span>
-              </Button>
+              <button type="submit" title={email} className="inline-flex h-10 items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface)] px-4 text-sm font-medium hover:border-[var(--line-strong)]">
+                <LogOut aria-hidden="true" size={15} />
+                登出
+              </button>
             </form>
           ) : (
-            <Link href="/login" className="inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-[var(--ink-soft)] hover:bg-white">
-              <LogIn aria-hidden="true" size={16} />
-              Sign in
+            <Link href="/login" className="inline-flex h-10 items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface)] px-4 text-sm font-medium hover:border-[var(--line-strong)]">
+              <LogIn aria-hidden="true" size={15} />
+              登入
             </Link>
           )}
         </div>

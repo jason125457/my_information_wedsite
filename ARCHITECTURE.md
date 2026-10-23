@@ -305,6 +305,15 @@ MVP 使用 rule-based feedback 加 LLM ranking。Save 增加相似內容權重�
 
 Feed 不使用 infinite scroll，採 Load More 或分頁。
 
+### UI 設計系統（2026-10-23）
+
+以 ui-ux-pro-max 產生的 Swiss 極簡＋報刊排版為基礎，參考圖片導向的 featured-blog 版型：
+- 暖紙色底 `#F6F4EF`、墨色文字、單一冷靜的 teal 強調色；不用「新聞紅」，避免製造焦慮。
+- 字體：Newsreader＋Noto Serif TC（標題）、Noto Sans TC（內文），由 Google Fonts 以 unicode-range 分片載入。
+- 每個主題固定一個顏色（`data-topic` → `--topic`），用於標籤與無圖時的漸層佔位圖。
+- 首頁：報紙式刊頭、頭條大圖＋「同場加映」、三欄圖片卡片、深色「探索」帶（音樂／攝影）；「再看 N 則」取代無限捲動。
+- 首頁內容為近 72 小時、依分數排序，單一主題最多佔 1/4。
+
 ## 12. Route Handlers and Server Actions
 
 排程工作不經 HTTP，由 GitHub Actions 直接執行：

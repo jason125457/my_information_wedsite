@@ -7,5 +7,5 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const { supabase, user } = await getOptionalAuthenticatedUser();
   const stories = await loadFeed(supabase, user?.id ?? null);
-  return <FeedPage email={user?.email} stories={stories} canPersonalize={Boolean(user)} />;
+  return <FeedPage email={user?.email} stories={stories} layout="front" canPersonalize={Boolean(user)} />;
 }

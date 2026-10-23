@@ -81,6 +81,10 @@ function createMockSupabase(db: MockDatabase): SupabaseClient {
           filteredRows = filteredRows.filter((r) => r[col] === val);
           return builder;
         },
+        gte: (col: string, val: string) => {
+          filteredRows = filteredRows.filter((r) => typeof r[col] === "string" && (r[col] as string) >= val);
+          return builder;
+        },
         in: (col: string, vals: unknown[]) => {
           const valSet = new Set(vals);
           filteredRows = filteredRows.filter((r) => valSet.has(r[col]));
@@ -329,10 +333,29 @@ describe("Feed Query Separation (Story #51+ beyond global Top 50)", () => {
     const client = createMockSupabase(db);
     const feed = await loadFeed(client, "user-1", "all");
 
-    // 50 queried, 1 excluded => 49 returned
-    expect(feed).toHaveLength(49);
+    // No story is recent, so the front page falls back to the all-time best.
+    // All seeded stories share one topic, which may fill a quarter of the 60
+    // slots (15); the not-interested one is excluded => 14 returned
+    expect(feed).toHaveLength(14);
     expect(feed.some((item) => item.id === "story-1")).toBe(false);
     expect(feed[0].id).toBe("story-2");
+  });
+
+  it("global / (view: all) puts recent stories ahead of older high scorers", async () => {
+    const db = seedDatabase();
+    const recent = new Date(Date.now() - 3_600_000).toISOString();
+    const old = "2026-01-01T00:00:00Z";
+    for (const story of db.stories as Array<Record<string, unknown>>) {
+      story.created_at = Number(String(story.id).split("-")[1]) > 40 ? recent : old;
+    }
+
+    const feed = await loadFeed(createMockSupabase(db), "user-1", "all");
+
+    // stories 41-60 are recent (scores 60..41); the topic cap keeps 15 of them,
+    // which is enough, so older high scorers stay off the front page
+    expect(feed).toHaveLength(15);
+    expect(feed[0].id).toBe("story-41");
+    expect(feed.every((item) => Number(item.id.split("-")[1]) > 40)).toBe(true);
   });
 });
 
