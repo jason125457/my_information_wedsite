@@ -56,6 +56,8 @@ export interface ProcessingOptions {
   maxStories?: number;
   /** Most stories per topic in one run, so no single topic floods the feed. */
   maxPerTopic?: number;
+  /** Most new stories one source may contribute per run. */
+  maxPerSource?: number;
 }
 
 export async function processCandidates(
@@ -69,6 +71,7 @@ export async function processCandidates(
   const summaryBatchSize = clampInteger(options.summaryBatchSize ?? 8, 1, 20);
   const maxStories = clampInteger(options.maxStories ?? 10, 1, 200);
   const maxPerTopic = clampInteger(options.maxPerTopic ?? 3, 1, 200);
+  const maxPerSource = clampInteger(options.maxPerSource ?? 2, 1, 200);
   const now = options.now ?? new Date();
 
   const prefiltered = prefilterCandidates(candidates.slice(0, maximum), now);
@@ -114,10 +117,15 @@ export async function processCandidates(
   // have room. Strong candidates beyond the caps are evaluated but not kept.
   const groups: Array<RankedCandidate & { additionalSources: NormalizedCandidate[] }> = [];
   const perTopic = new Map<string, number>();
+  const perSource = new Map<string, number>();
 
   for (const item of aboveThreshold) {
     const topic = item.classification.topics[0] ?? item.candidate.topic;
-    const hasRoom = groups.length < maxStories && (perTopic.get(topic) ?? 0) < maxPerTopic;
+    const source = item.candidate.sourceId;
+    const hasRoom =
+      groups.length < maxStories &&
+      (perTopic.get(topic) ?? 0) < maxPerTopic &&
+      (perSource.get(source) ?? 0) < maxPerSource;
     let matched = false;
     for (const group of groups) {
       const comparison = compareCandidates(group.candidate, item.candidate);
@@ -144,6 +152,7 @@ export async function processCandidates(
     if (matched || !hasRoom) continue;
     groups.push({ ...item, additionalSources: [] });
     perTopic.set(topic, (perTopic.get(topic) ?? 0) + 1);
+    perSource.set(source, (perSource.get(source) ?? 0) + 1);
   }
 
   const stories: StoryDraft[] = [];
@@ -168,6 +177,22 @@ export async function processCandidates(
     });
   }
 
+  // The model occasionally copies an English headline instead of translating
+  // it. Re-ask once for just those stories; keep the first answer if the retry
+  // fails or is still untranslated, since a story beats no story.
+  const untranslated = stories.filter((story) => !hasChinese(story.summary.title));
+  if (untranslated.length && !quotaError) {
+    try {
+      const retried = await editor.summarizeMany(untranslated);
+      untranslated.forEach((story, index) => {
+        const summary = retried[index];
+        if (summary && hasChinese(summary.title)) story.summary = summary;
+      });
+    } catch (error) {
+      if (error instanceof GeminiDailyQuotaError) quotaError = error;
+    }
+  }
+
   return {
     stories,
     prefilterRejected: prefiltered.rejected,
@@ -187,6 +212,10 @@ function failure(
     stage,
     errorMessage: error instanceof Error ? error.message : "Unknown AI processing error.",
   };
+}
+
+function hasChinese(text: string) {
+  return /[\u3400-\u9fff]/.test(text);
 }
 
 function chunk<T>(items: T[], size: number) {

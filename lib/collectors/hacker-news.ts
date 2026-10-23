@@ -7,13 +7,15 @@ import type {
 } from "@/lib/collectors/types";
 import { asPositiveInteger, cleanText, normalizeUrl, toIsoDate } from "@/lib/collectors/utils";
 
-type HackerNewsList = "topstories" | "beststories" | "newstories";
+type HackerNewsList = "topstories" | "beststories" | "newstories" | "showstories";
 
 interface HackerNewsCollectorOptions {
   sourceId: string;
   sourceName?: string;
   list?: HackerNewsList;
   topic?: ContentTopic;
+  /** Show HN lists new tools rather than news, so it can feed Discovery. */
+  isDiscovery?: boolean;
   maxItems?: number;
   fetchImplementation?: FetchImplementation;
 }
@@ -41,6 +43,7 @@ export class HackerNewsCollector implements Collector<HackerNewsItem> {
 
   private readonly list: HackerNewsList;
   private readonly topic: ContentTopic;
+  private readonly isDiscovery: boolean;
   private readonly maxItems: number;
   private readonly fetchImplementation: FetchImplementation;
 
@@ -49,6 +52,7 @@ export class HackerNewsCollector implements Collector<HackerNewsItem> {
     this.sourceName = options.sourceName ?? "Hacker News";
     this.list = options.list ?? "topstories";
     this.topic = options.topic ?? "technology";
+    this.isDiscovery = options.isDiscovery ?? false;
     this.maxItems = asPositiveInteger(options.maxItems, 30, 100);
     this.fetchImplementation = options.fetchImplementation ?? fetch;
   }
@@ -95,7 +99,7 @@ export class HackerNewsCollector implements Collector<HackerNewsItem> {
         excerpt: cleanText(item.text),
         publishedAt: toIsoDate(item.time),
         topic: this.topic,
-        isDiscovery: false,
+        isDiscovery: this.isDiscovery,
         engagement: {
           score: item.score,
           commentCount: item.descendants,

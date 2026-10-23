@@ -509,7 +509,7 @@ describe("AI Pipeline Bounded Concurrency", () => {
   }
 
   const summaryFor = (candidate: NormalizedCandidate): StorySummary => ({
-    title: `Summary of ${candidate.title}`,
+    title: `摘要：${candidate.title}`,
     summary: "Sentence 1. Sentence 2.",
     why_recommended: "Relevant to technology.",
   });
