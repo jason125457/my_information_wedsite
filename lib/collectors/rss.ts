@@ -147,12 +147,17 @@ function imageValue(item: XmlRecord): string | null {
     ...asArray(group?.["media:thumbnail"]),
     ...asArray(group?.["media:content"]),
   ];
+  // Feeds such as The Guardian list several renditions; take the widest.
+  let best: { url: string; width: number } | null = null;
   for (const media of mediaCandidates) {
     const record = asRecord(media);
     const medium = textValue(record?.["@medium"]) ?? textValue(record?.["@type"]) ?? "image";
     const url = textValue(record?.["@url"]);
-    if (url && /image/i.test(medium)) return safeImageUrl(url);
+    if (!url || !/image/i.test(medium)) continue;
+    const width = Number(textValue(record?.["@width"])) || 0;
+    if (!best || width > best.width) best = { url, width };
   }
+  if (best) return safeImageUrl(best.url);
 
   for (const enclosure of asArray(item.enclosure)) {
     const record = asRecord(enclosure);
@@ -170,7 +175,12 @@ function imageValue(item: XmlRecord): string | null {
 function safeImageUrl(value: string): string | null {
   try {
     const url = new URL(value.trim());
-    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    // BBC feeds advertise 240px thumbnails; its image service serves any listed width.
+    if (url.hostname === "ichef.bbci.co.uk") {
+      url.pathname = url.pathname.replace(/\/standard\/\d+\//, "/standard/976/");
+    }
+    return url.toString();
   } catch {
     return null;
   }
