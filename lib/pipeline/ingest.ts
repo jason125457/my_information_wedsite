@@ -5,7 +5,6 @@ import {
   HackerNewsCollector,
   RssCollector,
   runCollectors,
-  runCollectorsSequentially,
   type Collector,
   type ContentTopic,
   type NormalizedCandidate,
@@ -62,8 +61,6 @@ export interface IngestOptions {
   minimumScore?: number;
   maxCandidatesPerSource?: number;
   maxTotalCandidates?: number;
-  /** Pause between Reddit feed requests; Reddit throttles unauthenticated bursts. */
-  redditDelayMs?: number;
 }
 
 interface CandidateChoice extends SourceChoice {
@@ -193,12 +190,20 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
       }
     }
 
-    // 4. Run collectors
-    const redditCollectors = collectorsToRun.filter((c) => c.sourceType === "reddit");
-    const collectorResults = [
-      ...(await runCollectors(collectorsToRun.filter((c) => c.sourceType !== "reddit"))),
-      ...(await runCollectorsSequentially(redditCollectors, options.redditDelayMs ?? 10_000)),
-    ];
+    // 4. Run collectors. Reddit throttles unauthenticated feed requests from
+    // shared CI IPs after the first one, so each run fetches a single Reddit
+    // source, rotating through them by time slot (every source refreshes
+    // within a few runs; their "top of the week/day" listings change slowly).
+    const redditCollectors = collectorsToRun
+      .filter((c) => c.sourceType === "reddit")
+      .sort((first, second) => first.sourceId.localeCompare(second.sourceId));
+    const redditThisRun = redditCollectors.length
+      ? [redditCollectors[redditSlot(now) % redditCollectors.length]]
+      : [];
+    const collectorResults = await runCollectors([
+      ...collectorsToRun.filter((c) => c.sourceType !== "reddit"),
+      ...redditThisRun,
+    ]);
     const allCandidates: NormalizedCandidate[] = [];
 
     for (const result of collectorResults) {
@@ -209,7 +214,10 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
           stat.error = result.errorMessage ?? "Collector fetch failed.";
         }
       }
-      allCandidates.push(...result.candidates);
+      const reliability = sourceReliabilityMap.get(result.sourceId) ?? "unknown";
+      allCandidates.push(
+        ...result.candidates.map((candidate) => ({ ...candidate, sourceReliability: reliability })),
+      );
     }
 
     // 5. In-memory prefiltering
@@ -308,7 +316,7 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
 
     const processingResult = await processCandidates(candidatesToProcess, editor, {
       now,
-      minimumScore: options.minimumScore ?? 70,
+      minimumScore: options.minimumScore ?? 60,
       maxCandidates: options.maxTotalCandidates ?? 150,
       feedbackFor: (candidate) => feedbackProfile.feedbackFor(candidate),
     });
@@ -396,6 +404,10 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
           final_score: storyDraft.ranking.finalScore,
           primary_url: primaryCandidate.url,
           published_at: primaryCandidate.publishedAt,
+          image_url:
+            primaryCandidate.imageUrl ??
+            allStoryCandidates.find((c) => c.imageUrl)?.imageUrl ??
+            null,
         })
         .select("id")
         .single();
@@ -552,6 +564,11 @@ export function createCollectorFromSource(
     default:
       throw new Error(`Unsupported source type: ${source.type}`);
   }
+}
+
+/** Two-hour slot index, matching the ingestion schedule. */
+function redditSlot(now: Date) {
+  return Math.floor(now.getTime() / (2 * 60 * 60 * 1000));
 }
 
 function interleaveBySource(candidates: NormalizedCandidate[]) {

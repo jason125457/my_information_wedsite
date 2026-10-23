@@ -30,6 +30,7 @@ interface RssCollectedItem {
   publishedAt: string | null;
   author: string | null;
   categories: string[];
+  imageUrl: string | null;
 }
 
 type XmlRecord = Record<string, unknown>;
@@ -96,6 +97,7 @@ export class RssCollector implements Collector<RssCollectedItem> {
         topic: this.topic,
         isDiscovery: this.isDiscovery,
         engagement: {},
+        imageUrl: item.imageUrl,
         rawMetadata: {
           author: item.author,
           categories: item.categories,
@@ -127,7 +129,50 @@ export class RssCollector implements Collector<RssCollectedItem> {
       categories: asArray(item.category)
         .map((category) => textValue(category))
         .filter((category): category is string => Boolean(category)),
+      imageUrl: imageValue(item),
     };
+  }
+}
+
+/**
+ * Finds the image a feed item advertises, in order of reliability:
+ * media:content / media:thumbnail (also inside media:group, as YouTube uses),
+ * an image enclosure, then the first <img> in the item's HTML.
+ */
+function imageValue(item: XmlRecord): string | null {
+  const group = asRecord(item["media:group"]);
+  const mediaCandidates = [
+    ...asArray(item["media:content"]),
+    ...asArray(item["media:thumbnail"]),
+    ...asArray(group?.["media:thumbnail"]),
+    ...asArray(group?.["media:content"]),
+  ];
+  for (const media of mediaCandidates) {
+    const record = asRecord(media);
+    const medium = textValue(record?.["@medium"]) ?? textValue(record?.["@type"]) ?? "image";
+    const url = textValue(record?.["@url"]);
+    if (url && /image/i.test(medium)) return safeImageUrl(url);
+  }
+
+  for (const enclosure of asArray(item.enclosure)) {
+    const record = asRecord(enclosure);
+    const url = textValue(record?.["@url"]);
+    if (url && /^image\//i.test(textValue(record?.["@type"]) ?? "")) return safeImageUrl(url);
+  }
+
+  const html = [item["content:encoded"], item.description, item.content, item.summary]
+    .map((value) => textValue(value))
+    .find((value) => value && /<img/i.test(value));
+  const inline = html?.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1];
+  return inline ? safeImageUrl(inline.replace(/&amp;/g, "&")) : null;
+}
+
+function safeImageUrl(value: string): string | null {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
   }
 }
 

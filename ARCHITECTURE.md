@@ -66,7 +66,12 @@ MVP 不建立獨立 backend service。
 - `GeminiProvider` 將請求序列化並保持最小間隔（`GEMINI_MIN_INTERVAL_MS`），429 per-minute 依建議時間重試，per-day 額度用完立即停止該次 run 的後續 AI 呼叫。
 - AI 處理失敗的 candidates 不寫入 `raw_items`，下一次 run 會重新嘗試。
 - 每次 run 最多處理 150 則，以 round-robin 方式在各來源間分配，避免單一來源佔滿額度。
-- 預設品質門檻 `final_score >= 70`（2026-10-22 依首次實測調整；55 時 150 則中有 133 則通過，低分多為雜訊）。
+- 2026-10-23 決策（程式化評分）：實測時 AI 給分偏高（門檻 70 仍有約 2/3 通過），且前 120 則中 AI 主題佔 64 則。改為：
+  - **程式計算**：`content_type`（來源設定）、`fact_status`（來源可靠度）、`freshness`（發布時間衰減）、`discussion_popularity`（Hacker News 分數／留言，無資料為中性 3）。見 `lib/pipeline/signals.ts`。
+  - **AI 只判斷**：主題、`interest_relevance`、`information_value`、`importance`、`discovery_value`，並要求嚴格使用 1–5 全範圍。分類批次提高到 40 則。
+  - **關鍵字預過濾**：促銷、贈獎、贊助內容在 AI 之前丟棄（`lib/pipeline/prefilter.ts`）。
+  - **每輪配額**：每輪最多 10 則、每個主題最多 3 則（`maxStories`／`maxPerTopic`）；品質下限 `final_score >= 60`。超出配額的候選已評估、不再重試。
+  - **每日精選**：單一主題最多佔 25%。
 
 Discovery 搜尋結果必須保存 URL、Title、Source 與 citation metadata，UI 必須顯示清楚且可點擊的原始來源。
 
@@ -92,13 +97,17 @@ interface Collector {
 
 來源由資料庫設定，不 hardcode。適用官方 Blog、科技媒體、音樂媒體、攝影 Blog 與新聞 RSS。
 
+### Feed images
+
+文章圖片取自來源 feed 自身提供的 `media:content`／`media:thumbnail`（含 YouTube 的 `media:group`）、圖片 `enclosure` 或內文第一張 `<img>`，存成 `stories.image_url`。只存網址，不下載或代理圖片。
+
 ### Hacker News
 
 使用 Hacker News 官方 API，抓取 top、best、new stories，再依 AI、Technology、Security 與 Startup topic profile 預先過濾。
 
 ### Reddit
 
-使用 Reddit 官方提供的公開 RSS feed（`/r/<sub>/<listing>/.rss`），不需 OAuth 應用程式。多個 subreddit 以 multireddit（`r/a+b+c`）合併為一次請求；Reddit 會對未認證的連續請求回應 429，因此 Reddit 來源依序抓取並間隔 10 秒。抓取失敗只影響該來源。MVP 保存標題、permalink、發布時間、必要短 excerpt 與 derived AI metadata，不長期保存大量全文或 comments。
+使用 Reddit 官方提供的公開 RSS feed（`/r/<sub>/<listing>/.rss`），不需 OAuth 應用程式。多個 subreddit 以 multireddit（`r/a+b+c`）合併為一次請求。實測從 GitHub Actions 每輪只有第一個 Reddit 請求會成功，之後回應 429，因此**每輪只抓一個 Reddit 來源**，依兩小時時段輪替。抓取失敗只影響該來源。MVP 保存標題、permalink、發布時間、必要短 excerpt 與 derived AI metadata，不長期保存大量全文或 comments。
 
 ### YouTube
 

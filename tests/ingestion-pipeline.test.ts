@@ -136,8 +136,9 @@ function createMockSupabase(initialState?: Partial<MockDatabaseState>) {
                     const row: StoryRow = {
                       id: `story-${idCounter++}`,
                       created_at: new Date().toISOString(),
-                      published_at: storyData.published_at ?? null,
                       ...storyData,
+                      published_at: storyData.published_at ?? null,
+                      image_url: storyData.image_url ?? null,
                     };
                     state.stories.push(row);
                     return Promise.resolve({ data: row, error: null });

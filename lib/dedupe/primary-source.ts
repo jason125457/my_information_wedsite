@@ -1,11 +1,6 @@
-export type SourceReliability =
-  | "official"
-  | "original_reporting"
-  | "major_media"
-  | "known_blog"
-  | "community"
-  | "reddit"
-  | "unknown";
+import type { SourceReliability } from "@/lib/collectors/types";
+
+export type { SourceReliability };
 
 export interface SourceChoice {
   id: string;

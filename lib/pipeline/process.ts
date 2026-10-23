@@ -1,10 +1,11 @@
 import { GeminiDailyQuotaError } from "@/lib/ai/provider";
-import type { Classification, StorySummary } from "@/lib/ai/schemas";
+import type { Classification, EditorialJudgement, StorySummary } from "@/lib/ai/schemas";
 import type { StoryAIEditor } from "@/lib/ai/story-editor";
 import type { ContentTopic, NormalizedCandidate } from "@/lib/collectors/types";
 import { compareCandidates } from "@/lib/dedupe";
 import { calculateRanking, type FeedbackSignals, type RankingResult } from "@/lib/ranking";
 import { prefilterCandidates, type PrefilterRejection } from "@/lib/pipeline/prefilter";
+import { completeClassification } from "@/lib/pipeline/signals";
 
 export const defaultTopicWeights: Record<ContentTopic, number> = {
   ai: 5,
@@ -51,6 +52,10 @@ export interface ProcessingOptions {
   classificationBatchSize?: number;
   /** Stories per summary request. */
   summaryBatchSize?: number;
+  /** Most stories one run may create; the rest are evaluated but not kept. */
+  maxStories?: number;
+  /** Most stories per topic in one run, so no single topic floods the feed. */
+  maxPerTopic?: number;
 }
 
 export async function processCandidates(
@@ -59,21 +64,24 @@ export async function processCandidates(
   options: ProcessingOptions = {},
 ): Promise<ProcessingResult> {
   const maximum = clampInteger(options.maxCandidates ?? 150, 1, 500);
-  const minimumScore = clamp(options.minimumScore ?? 70, 0, 100);
-  const classificationBatchSize = clampInteger(options.classificationBatchSize ?? 25, 1, 50);
+  const minimumScore = clamp(options.minimumScore ?? 60, 0, 100);
+  const classificationBatchSize = clampInteger(options.classificationBatchSize ?? 40, 1, 50);
   const summaryBatchSize = clampInteger(options.summaryBatchSize ?? 8, 1, 20);
+  const maxStories = clampInteger(options.maxStories ?? 10, 1, 200);
+  const maxPerTopic = clampInteger(options.maxPerTopic ?? 3, 1, 200);
+  const now = options.now ?? new Date();
 
-  const prefiltered = prefilterCandidates(candidates.slice(0, maximum), options.now);
+  const prefiltered = prefilterCandidates(candidates.slice(0, maximum), now);
   const failures: ProcessingFailure[] = [];
   const ranked: RankedCandidate[] = [];
   // Once the daily quota is gone every further call fails, so stop calling.
   let quotaError: GeminiDailyQuotaError | null = null;
 
   for (const batch of chunk(prefiltered.accepted, classificationBatchSize)) {
-    let classifications: Array<Classification | null>;
+    let judgements: Array<EditorialJudgement | null>;
     try {
       if (quotaError) throw quotaError;
-      classifications = await editor.classifyMany(batch);
+      judgements = await editor.classifyMany(batch);
     } catch (error) {
       if (error instanceof GeminiDailyQuotaError) quotaError = error;
       failures.push(...batch.map((candidate) => failure(candidate, "classification", error)));
@@ -81,11 +89,12 @@ export async function processCandidates(
     }
 
     batch.forEach((candidate, index) => {
-      const classification = classifications[index];
-      if (!classification) {
+      const judgement = judgements[index];
+      if (!judgement) {
         failures.push(failure(candidate, "classification", new Error("Missing from batch output.")));
         return;
       }
+      const classification = completeClassification(judgement, candidate, now);
       const primaryTopic = classification.topics[0] ?? candidate.topic;
       const ranking = calculateRanking({
         classification,
@@ -100,9 +109,15 @@ export async function processCandidates(
   const aboveThreshold = ranked
     .filter((item) => item.ranking.finalScore >= minimumScore)
     .sort((first, second) => second.ranking.finalScore - first.ranking.finalScore);
+  // Walk candidates best-first. Each either joins an already selected story as
+  // another source, or becomes a new story while the run and its topic still
+  // have room. Strong candidates beyond the caps are evaluated but not kept.
   const groups: Array<RankedCandidate & { additionalSources: NormalizedCandidate[] }> = [];
+  const perTopic = new Map<string, number>();
 
   for (const item of aboveThreshold) {
+    const topic = item.classification.topics[0] ?? item.candidate.topic;
+    const hasRoom = groups.length < maxStories && (perTopic.get(topic) ?? 0) < maxPerTopic;
     let matched = false;
     for (const group of groups) {
       const comparison = compareCandidates(group.candidate, item.candidate);
@@ -111,7 +126,8 @@ export async function processCandidates(
         matched = true;
         break;
       }
-      if (comparison.requiresAIReview && !quotaError) {
+      // An AI duplicate check only pays off when the item could be selected.
+      if (comparison.requiresAIReview && hasRoom && !quotaError) {
         try {
           const decision = await editor.decideDuplicate(group.candidate, item.candidate);
           if (decision.same_event) {
@@ -125,7 +141,9 @@ export async function processCandidates(
         }
       }
     }
-    if (!matched) groups.push({ ...item, additionalSources: [] });
+    if (matched || !hasRoom) continue;
+    groups.push({ ...item, additionalSources: [] });
+    perTopic.set(topic, (perTopic.get(topic) ?? 0) + 1);
   }
 
   const stories: StoryDraft[] = [];

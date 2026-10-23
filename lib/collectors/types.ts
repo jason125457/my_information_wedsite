@@ -30,8 +30,21 @@ export interface NormalizedCandidate {
     score?: number;
     commentCount?: number;
   };
+  /** Image advertised by the feed itself (media:*, enclosure, or first inline img). */
+  imageUrl?: string | null;
+  /** Set by ingestion from the source row; drives the programmatic fact status. */
+  sourceReliability?: SourceReliability;
   rawMetadata: Json;
 }
+
+export type SourceReliability =
+  | "official"
+  | "original_reporting"
+  | "major_media"
+  | "known_blog"
+  | "community"
+  | "reddit"
+  | "unknown";
 
 export interface Collector<CollectedItem = unknown> {
   readonly sourceId: string;

@@ -34,18 +34,3 @@ export async function runCollector(
 export async function runCollectors(collectors: Collector[], context?: CollectorContext) {
   return Promise.all(collectors.map((collector) => runCollector(collector, context)));
 }
-
-/** Runs collectors one at a time with a pause between them, for hosts that throttle bursts. */
-export async function runCollectorsSequentially(
-  collectors: Collector[],
-  delayMs: number,
-  context?: CollectorContext,
-  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-) {
-  const results: CollectorRunResult[] = [];
-  for (const [index, collector] of collectors.entries()) {
-    if (index > 0 && delayMs > 0) await sleep(delayMs);
-    results.push(await runCollector(collector, context));
-  }
-  return results;
-}

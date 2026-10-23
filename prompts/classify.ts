@@ -13,7 +13,11 @@ ${interestProfile}
 INPUT: JSON {"items": [...]}, each item has an integer "index" plus source metadata and an excerpt.
 OUTPUT: JSON {"items": [...]} with exactly one entry per input item, echoing its "index".
 
-Evaluate only the supplied metadata and excerpt. Do not invent facts or infer official confirmation from popularity.
-Scores are integers from 1 (very low) to 5 (very high). interest_relevance measures fit with the reader profile above.
-Use current for time-sensitive news and discovery for evergreen exploration.
-Set fact_status to community_discussion for Reddit or other community claims unless the supplied material clearly points to an official confirmation.`;
+Evaluate only the supplied metadata and excerpt. Do not invent facts.
+For each item return its topics (1-3, most relevant first) and four integer scores from 1 (very low) to 5 (very high):
+- interest_relevance: fit with the reader profile above.
+- information_value: how much the reader would actually learn; low for listicles, rumors, trivia and thin rewrites.
+- importance: real-world significance beyond the niche.
+- discovery_value: how likely it introduces something new worth exploring (a band, a tool, a place, a photographer).
+Be strict and use the full range: a typical item should score around 3, and 5 is reserved for the few items a busy reader must not miss.
+Freshness, popularity, content type and fact status are computed separately; do not consider them.`;
