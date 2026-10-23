@@ -195,7 +195,7 @@ export function FeedList({ initialStories, view = "all", layout = "list", canPer
       ) : null}
 
       {errorMessage ? (
-        <p role="alert" className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <p role="alert" className="mt-6 rounded-xl border border-[var(--danger)] bg-[var(--danger-soft)] px-4 py-3 text-sm text-[var(--danger)]">
           {errorMessage}
         </p>
       ) : null}
@@ -211,7 +211,7 @@ export function FeedList({ initialStories, view = "all", layout = "list", canPer
               <ol className="mt-1">
                 {sections.side.map((story, index) => (
                   <li key={story.id} className="grid grid-cols-[28px_1fr] gap-3 border-b border-[var(--line)] py-4 last:border-b-0">
-                    <span aria-hidden="true" className="font-serif text-lg leading-7 font-semibold text-stone-400 tabular-nums">
+                    <span aria-hidden="true" className="font-serif text-lg leading-7 font-semibold text-[var(--muted)] tabular-nums">
                       {String(index + 1).padStart(2, "0")}
                     </span>
                     <div className="space-y-1.5">
@@ -244,7 +244,7 @@ export function FeedList({ initialStories, view = "all", layout = "list", canPer
             className={cn(
               "h-10 shrink-0 cursor-pointer rounded-full border px-4 text-sm font-medium transition-colors",
               selectedTopic === topic.slug
-                ? "border-[var(--ink)] bg-[var(--ink)] text-white"
+                ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--on-ink)]"
                 : "border-[var(--line)] bg-[var(--surface)] text-[var(--ink-soft)] hover:border-[var(--line-strong)]",
             )}
           >
@@ -291,7 +291,7 @@ function TodayProgress({ total, read }: { total: number; read: number }) {
       aria-label="今日進度"
       className={cn(
         "mt-6 flex flex-col gap-3 rounded-2xl border px-5 py-4 sm:flex-row sm:items-center sm:gap-6",
-        done ? "border-[color-mix(in_srgb,var(--accent)_35%,white)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--surface)]",
+        done ? "border-[color-mix(in_srgb,var(--accent)_35%,var(--surface))] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--surface)]",
       )}
     >
       <p className="flex shrink-0 items-center gap-2 text-sm font-medium">

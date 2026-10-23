@@ -107,7 +107,7 @@ export function SettingsForm({ topics, sources }: { topics: SettingsTopic[]; sou
                     className={cn(
                       "size-10 cursor-pointer rounded-full border text-sm font-semibold tabular-nums transition-colors",
                       topic.weight === weight
-                        ? "border-[var(--ink)] bg-[var(--ink)] text-white"
+                        ? "border-[var(--ink)] bg-[var(--ink)] text-[var(--on-ink)]"
                         : weight < topic.weight
                           ? "border-[var(--line-strong)] bg-[var(--surface-subtle)] text-[var(--ink-soft)]"
                           : "border-[var(--line)] bg-[var(--surface)] text-[var(--muted)] hover:border-[var(--line-strong)]",

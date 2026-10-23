@@ -215,7 +215,7 @@ async function finishJob(
     .eq("id", jobId);
 }
 
-function taipeiDate(date: Date) {
+export function taipeiDate(date: Date) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Taipei",
     year: "numeric",

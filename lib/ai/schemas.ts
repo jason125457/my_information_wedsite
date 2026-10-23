@@ -63,7 +63,12 @@ export const summaryBatchSchema = z.object({
   items: z.array(summarySchema.extend({ index: indexSchema })),
 });
 
+export const weeklySummarySchema = z.object({
+  summary: z.string().trim().min(1).max(1_000),
+});
+
 export type Classification = z.infer<typeof classificationSchema>;
 export type EditorialJudgement = z.infer<typeof editorialJudgementSchema>;
 export type StorySummary = z.infer<typeof summarySchema>;
 export type DuplicateDecision = z.infer<typeof duplicateDecisionSchema>;
+export type WeeklySummary = z.infer<typeof weeklySummarySchema>;

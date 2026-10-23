@@ -14,7 +14,7 @@ export function TopicChip({ story, tone = "paper" }: { story: FeedStory; tone?: 
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs leading-none font-medium",
         tone === "paper"
-          ? "bg-[color-mix(in_srgb,var(--topic)_10%,white)] text-[var(--topic)]"
+          ? "bg-[color-mix(in_srgb,var(--topic)_14%,var(--surface))] text-[var(--topic)]"
           : "bg-[color-mix(in_srgb,var(--topic)_22%,#111)] text-[color-mix(in_srgb,var(--topic)_45%,white)]",
       )}
     >
@@ -46,7 +46,7 @@ export function StoryMedia({
     <div
       data-topic={story.topic}
       className={cn(
-        "relative overflow-hidden bg-[radial-gradient(circle_at_25%_20%,color-mix(in_srgb,var(--topic)_35%,white),color-mix(in_srgb,var(--topic)_78%,#111))]",
+        "relative overflow-hidden bg-[radial-gradient(circle_at_25%_20%,color-mix(in_srgb,var(--topic)_45%,var(--surface)),color-mix(in_srgb,var(--topic)_60%,#111))]",
         className,
       )}
     >

@@ -25,7 +25,7 @@ export default async function JobsPage() {
 
         <div className="mt-8 space-y-4">
           {jobs.length ? jobs.map((job) => (
-            <article key={job.id} className="rounded-2xl border border-[var(--line)] bg-white p-5">
+            <article key={job.id} className="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="font-semibold">{job.type === "ingestion" ? "Feed refresh" : job.type === "daily_digest" ? "Daily Digest" : job.type}</h2>
@@ -53,7 +53,7 @@ export default async function JobsPage() {
               ) : null}
             </article>
           )) : (
-            <p className="rounded-2xl border border-dashed border-[var(--line-strong)] bg-white p-8 text-center text-[var(--muted)]">
+            <p className="rounded-2xl border border-dashed border-[var(--line-strong)] bg-[var(--surface)] p-8 text-center text-[var(--muted)]">
               尚無排程紀錄。第一次執行後會顯示在這裡。
             </p>
           )}

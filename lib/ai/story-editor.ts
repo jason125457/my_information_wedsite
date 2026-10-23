@@ -2,10 +2,12 @@ import {
   classificationBatchSchema,
   duplicateDecisionSchema,
   summaryBatchSchema,
+  weeklySummarySchema,
   type Classification,
   type DuplicateDecision,
   type EditorialJudgement,
   type StorySummary,
+  type WeeklySummary,
 } from "@/lib/ai/schemas";
 import type { AIModelConfig } from "@/lib/ai/config";
 import type { StructuredAIProvider } from "@/lib/ai/provider";
@@ -13,6 +15,7 @@ import type { NormalizedCandidate } from "@/lib/collectors/types";
 import { classificationInstructions } from "@/prompts/classify";
 import { dedupeInstructions } from "@/prompts/dedupe";
 import { summaryInstructions } from "@/prompts/summarize";
+import { weeklyInstructions } from "@/prompts/weekly";
 
 export interface SummaryRequest {
   candidate: NormalizedCandidate;
@@ -62,6 +65,18 @@ export class StoryAIEditor {
     });
 
     return alignByIndex(output.items, requests.length);
+  }
+
+  /** One paragraph describing where the reader's week of information went. */
+  summarizeWeek(items: Array<{ title: string; topic: string; contentType: string }>): Promise<WeeklySummary> {
+    return this.provider.generate({
+      model: this.models.quality,
+      schemaName: "weekly_summary",
+      schema: weeklySummarySchema,
+      instructions: weeklyInstructions,
+      input: JSON.stringify({ items }),
+      maxOutputTokens: 800,
+    });
   }
 
   decideDuplicate(
