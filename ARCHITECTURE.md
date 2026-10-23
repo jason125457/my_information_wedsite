@@ -328,7 +328,7 @@ Feed 不使用 infinite scroll，採 Load More 或分頁。
 
 - `npm run job:ingest`（`scripts/ingest.ts`）
 - `npm run job:digest`（`scripts/digest.ts`）
-- Weekly Review（尚未實作）
+- `npm run job:weekly`（`scripts/weekly.ts`）
 
 外部 endpoint：`POST /api/line/webhook`（尚未實作）。所有排程工作必須具備 idempotency。UI 的 read、save、read-later 與 feedback mutation 優先使用 Server Actions；若需要公開 API，再增加對應 Route Handler。
 
@@ -338,7 +338,7 @@ Feed 不使用 infinite scroll，採 Load More 或分頁。
 | --- | --- | --- |
 | Feed refresh | 每 2 小時 | `23 */2 * * *` |
 | Daily Digest | 每天 22:07 | `7 14 * * *` |
-| Weekly Review | 週日 21:00 | `0 13 * * 0` |
+| Weekly Review | 週日 21:07 | `7 13 * * 0` |
 
 Daily Digest 流程：過去 24 小時 Stories → 移除 Not Interested → 套用 feedback → deduplicate → rank → 選出約 15～20 則 → 儲存 Digest → 推送 LINE。若只有 11 則達標，就只保存 11 則。
 

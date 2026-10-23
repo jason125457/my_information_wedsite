@@ -29,7 +29,7 @@ export function NavLinks({ items }: { items: NavItem[] }) {
             aria-current={active ? "page" : undefined}
             className={cn(
               "shrink-0 rounded-full px-3.5 py-2 text-sm font-medium transition-colors",
-              active ? "bg-[var(--ink)] text-white" : "text-[var(--ink-soft)] hover:bg-[var(--surface-subtle)]",
+              active ? "bg-[var(--ink)] text-[var(--on-ink)]" : "text-[var(--ink-soft)] hover:bg-[var(--surface-subtle)]",
             )}
           >
             {item.label}

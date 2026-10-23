@@ -18,6 +18,7 @@
   --danger-soft: #fff1f0;
   --success: #067647;
   --success-soft: #ecfdf3;
+  --on-ink: #ffffff;
   --night: #111113;
   --night-surface: #1c1c1f;
   --night-line: #2e2e33;
@@ -32,6 +33,68 @@
 
   --font-serif: "Newsreader", "Noto Serif TC", Georgia, serif;
   --font-sans: "Noto Sans TC", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Dark theme: follows the system unless the reader picks one (html[data-theme]).
+   Surfaces are warm near-blacks; text and topic colours are lifted for contrast. */
+:root[data-theme="dark"] {
+  --background: #121214;
+  --surface: #1b1b1f;
+  --surface-subtle: #26262b;
+  --ink: #f2f1ed;
+  --ink-soft: #d4d4d8;
+  --muted: #a8a29e;
+  --line: #2e2e33;
+  --line-strong: #44444c;
+  --accent: #2dd4bf;
+  --accent-soft: rgb(45 212 191 / 0.13);
+  --focus: #2dd4bf;
+  --danger: #f87171;
+  --danger-soft: rgb(248 113 113 / 0.12);
+  --on-ink: #18181b;
+  --night: #0b0b0d;
+  --night-surface: #18181c;
+  --night-line: #2e2e33;
+
+  --topic-ai: #a5b4fc;
+  --topic-cybersecurity: #fda4af;
+  --topic-technology: #7dd3fc;
+  --topic-finance: #6ee7b7;
+  --topic-world: #fcd34d;
+  --topic-music: #c4b5fd;
+  --topic-photography: #5eead4;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --background: #121214;
+    --surface: #1b1b1f;
+    --surface-subtle: #26262b;
+    --ink: #f2f1ed;
+    --ink-soft: #d4d4d8;
+    --muted: #a8a29e;
+    --line: #2e2e33;
+    --line-strong: #44444c;
+    --accent: #2dd4bf;
+    --accent-soft: rgb(45 212 191 / 0.13);
+    --focus: #2dd4bf;
+    --danger: #f87171;
+    --danger-soft: rgb(248 113 113 / 0.12);
+    --on-ink: #18181b;
+    --night: #0b0b0d;
+    --night-surface: #18181c;
+    --night-line: #2e2e33;
+
+    --topic-ai: #a5b4fc;
+    --topic-cybersecurity: #fda4af;
+    --topic-technology: #7dd3fc;
+    --topic-finance: #6ee7b7;
+    --topic-world: #fcd34d;
+    --topic-music: #c4b5fd;
+    --topic-photography: #5eead4;
+    color-scheme: dark;
+  }
 }
 
 @theme inline {

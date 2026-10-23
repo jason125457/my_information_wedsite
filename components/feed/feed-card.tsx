@@ -80,7 +80,7 @@ export function StoryActionBar({ story, actions, tone = "paper" }: { story: Feed
           className={cn(
             buttonVariants({ variant: "primary", size: "sm" }),
             "mr-auto h-10",
-            tone === "night" && "bg-white text-[var(--ink)] hover:bg-zinc-200",
+            tone === "night" && "bg-white text-zinc-900 hover:bg-zinc-200",
           )}
         >
           閱讀原文
@@ -139,7 +139,7 @@ export function StoryActionBar({ story, actions, tone = "paper" }: { story: Feed
             <select
               value={reason}
               onChange={(event) => setReason(event.target.value as FeedbackReason)}
-              className="mt-1.5 h-10 w-full rounded-lg border border-[var(--line-strong)] bg-white px-3 text-sm font-normal text-[var(--ink)]"
+              className="mt-1.5 h-10 w-full rounded-lg border border-[var(--line-strong)] bg-[var(--surface)] px-3 text-sm font-normal text-[var(--ink)]"
             >
               {feedbackReasons.map((option) => (
                 <option key={option.value} value={option.value}>

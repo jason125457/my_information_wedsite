@@ -46,7 +46,7 @@ Secrets:
 
 Variables (optional; defaults shown in `.github/workflows/jobs.yml`): `GEMINI_MODEL_FAST`, `GEMINI_MODEL_QUALITY`, `GEMINI_MIN_INTERVAL_MS`, `APP_URL`.
 
-Then run **Actions → Scheduled jobs → Run workflow** with `ingest` once to fill the feed. The schedule then runs ingestion every 2 hours and the Daily Digest at 22:07 Asia/Taipei. A keepalive step stops GitHub from disabling the schedule after 60 quiet days.
+Then run **Actions → Scheduled jobs → Run workflow** with `ingest` once to fill the feed. The schedule then runs ingestion every 2 hours, the Daily Digest at 22:07 Asia/Taipei, and the weekly review on Sundays at 21:07. A keepalive step stops GitHub from disabling the schedule after 60 quiet days.
 
 ## 4. Cloudflare Workers (web app)
 

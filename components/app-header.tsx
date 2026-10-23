@@ -3,6 +3,7 @@ import { LogIn, LogOut } from "lucide-react";
 
 import { signOut } from "@/app/login/actions";
 import { NavLinks, type NavItem } from "@/components/nav-links";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const navigation: NavItem[] = [
   { href: "/", label: "今日" },
@@ -27,7 +28,8 @@ export function AppHeader({ email }: { email?: string }) {
           <NavLinks items={[...navigation, ...(email ? privateNavigation : [])]} />
         </nav>
 
-        <div className="order-2 ml-auto sm:order-3 sm:ml-0">
+        <div className="order-2 ml-auto flex items-center gap-2 sm:order-3 sm:ml-0">
+          <ThemeToggle />
           {email ? (
             <form action={signOut}>
               <button type="submit" title={email} className="inline-flex h-10 items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface)] px-4 text-sm font-medium hover:border-[var(--line-strong)]">
