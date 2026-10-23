@@ -169,6 +169,31 @@ describe("feed images", () => {
   });
 });
 
+describe("feed image renditions", () => {
+  it("picks the widest media rendition and upsizes BBC thumbnails", async () => {
+    const xml = `<?xml version="1.0"?>
+      <rss xmlns:media="http://search.yahoo.com/mrss/"><channel>
+        <item><guid>1</guid><title>Guardian style renditions</title><link>https://n.example/1</link>
+          <media:content url="https://i.example/small.jpg" width="140"/>
+          <media:content url="https://i.example/large.jpg" width="460"/></item>
+        <item><guid>2</guid><title>BBC style thumbnail</title><link>https://n.example/2</link>
+          <media:thumbnail url="https://ichef.bbci.co.uk/ace/standard/240/cpsprodpb/a/b.jpg"/></item>
+      </channel></rss>`;
+    const collector = new RssCollector({
+      sourceId: "s",
+      sourceName: "S",
+      feedUrl: "https://n.example/feed",
+      topic: "world",
+      fetchImplementation: (async () => new Response(xml)) as typeof fetch,
+    });
+    const items = await collector.fetch();
+    expect(items.map((item) => collector.normalize(item)?.imageUrl)).toEqual([
+      "https://i.example/large.jpg",
+      "https://ichef.bbci.co.uk/ace/standard/976/cpsprodpb/a/b.jpg",
+    ]);
+  });
+});
+
 describe("daily digest topic share", () => {
   it("limits one topic to a quarter of the digest", () => {
     const picks = selectDailyDigest(
