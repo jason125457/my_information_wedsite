@@ -49,7 +49,7 @@ MVP 不建立獨立 backend service。
 > - 排程改由 GitHub Actions（`.github/workflows/jobs.yml`）執行，原因：Vercel Hobby 的 cron 每天只能執行一次，且 Cloudflare Workers 免費版每次請求的 CPU 時間太短，無法跑 AI pipeline。公開 repo 的 Actions 不限分鐘數，定期寫入也能避免 Supabase 免費專案因 7 天無活動被暫停。
 
 - Cloudflare Workers 部署 Next.js
-- GitHub Actions schedule 觸發排程
+- 排程：Cloudflare Worker `personal-feed-scheduler`（`scheduler/`）以每小時一次的 Cron Trigger 呼叫 GitHub `workflow_dispatch`，實際工作在 GitHub Actions 執行。2026-10-23 決策：GitHub 自身的 `schedule` 事件實測延遲數小時或直接跳過，改由 Cloudflare 準時觸發（免費方案每帳號 5 個 cron，只用 1 個）
 - Cron 一律以 UTC 設定；Asia/Taipei 22:00 對應 UTC 14:00
 
 ## 3. AI Layer
@@ -336,9 +336,9 @@ Feed 不使用 infinite scroll，採 Load More 或分頁。
 
 | Job | Asia/Taipei | UTC cron |
 | --- | --- | --- |
-| Feed refresh | 每 2 小時 | `23 */2 * * *` |
-| Daily Digest | 每天 22:07 | `7 14 * * *` |
-| Weekly Review | 週日 21:07 | `7 13 * * 0` |
+| Feed refresh | 每 2 小時（偶數整點 :23） | Cloudflare `23 * * * *`，UTC 偶數小時 |
+| Daily Digest | 每天 22:23（緊接在當次抓取之後） | UTC 14 時 |
+| Weekly Review | 週日 21:23 | 週日 UTC 13 時 |
 
 Daily Digest 流程：過去 24 小時 Stories → 移除 Not Interested → 套用 feedback → deduplicate → rank → 選出約 15～20 則 → 儲存 Digest → 推送 LINE。若只有 11 則達標，就只保存 11 則。
 
