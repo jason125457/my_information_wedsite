@@ -254,6 +254,26 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
       }
     }
 
+    // raw_items is also unique on (source_id, external_id). A feed can keep an
+    // item's id while its URL changes, so look those up too; otherwise the
+    // upsert below violates that constraint and fails the whole run.
+    const candidateExternalIds = [
+      ...new Set(prefiltered.accepted.flatMap((c) => (c.externalId ? [c.externalId] : []))),
+    ];
+    for (let i = 0; i < candidateExternalIds.length; i += 50) {
+      const chunk = candidateExternalIds.slice(i, i + 50);
+      const { data, error } = await supabase
+        .from("raw_items")
+        .select("source_id, external_id")
+        .in("external_id", chunk);
+
+      if (!error && data) {
+        for (const row of data) {
+          if (row.external_id) existingExternalKeys.add(`${row.source_id}:${row.external_id}`);
+        }
+      }
+    }
+
     const novelCandidates: NormalizedCandidate[] = [];
     for (const candidate of prefiltered.accepted) {
       const isDuplicateUrl = existingCanonicalUrls.has(candidate.canonicalUrl);
