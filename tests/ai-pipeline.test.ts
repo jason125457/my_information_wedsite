@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getAIModelConfig } from "@/lib/ai/config";
 import {
   classificationSchema,
+  editorialJudgementSchema,
   type Classification,
   type StorySummary,
 } from "@/lib/ai/schemas";
@@ -61,7 +62,8 @@ describe("AI output contracts", () => {
     const first = makeCandidate();
     const second = makeCandidate({ sourceId: "other", canonicalUrl: "https://other.example/a" });
 
-    expect(await editor.classifyMany([first, second])).toEqual([classification, classification]);
+    const judgement = editorialJudgementSchema.parse(classification);
+    expect(await editor.classifyMany([first, second])).toEqual([judgement, judgement]);
     expect(await editor.summarizeMany([{ candidate: first, classification }])).toEqual([summary]);
     await editor.decideDuplicate(first, second);
 
@@ -85,7 +87,8 @@ describe("AI output contracts", () => {
     );
 
     const result = await editor.classifyMany([makeCandidate(), makeCandidate(), makeCandidate()]);
-    expect(result).toEqual([classification, null, classification]);
+    const judgement = editorialJudgementSchema.parse(classification);
+    expect(result).toEqual([judgement, null, judgement]);
   });
 });
 

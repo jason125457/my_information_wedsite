@@ -4,6 +4,7 @@ import {
   summaryBatchSchema,
   type Classification,
   type DuplicateDecision,
+  type EditorialJudgement,
   type StorySummary,
 } from "@/lib/ai/schemas";
 import type { AIModelConfig } from "@/lib/ai/config";
@@ -29,7 +30,7 @@ export class StoryAIEditor {
     private readonly models: AIModelConfig,
   ) {}
 
-  async classifyMany(candidates: NormalizedCandidate[]): Promise<Array<Classification | null>> {
+  async classifyMany(candidates: NormalizedCandidate[]): Promise<Array<EditorialJudgement | null>> {
     const output = await this.provider.generate({
       model: this.models.fast,
       schemaName: "story_classification_batch",
@@ -38,7 +39,7 @@ export class StoryAIEditor {
       input: JSON.stringify({
         items: candidates.map((candidate, index) => ({ index, ...serializeCandidate(candidate) })),
       }),
-      maxOutputTokens: 200 * candidates.length + 500,
+      maxOutputTokens: 120 * candidates.length + 500,
     });
 
     return alignByIndex(output.items, candidates.length);

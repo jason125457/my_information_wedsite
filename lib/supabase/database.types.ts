@@ -98,6 +98,7 @@ export interface Database {
           final_score: number;
           primary_url: string;
           published_at: string | null;
+          image_url: string | null;
           created_at: string;
         },
         {
@@ -116,6 +117,7 @@ export interface Database {
           final_score: number;
           primary_url: string;
           published_at?: string | null;
+          image_url?: string | null;
           created_at?: string;
         }
       >;

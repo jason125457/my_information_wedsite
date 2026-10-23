@@ -42,8 +42,21 @@ export const duplicateDecisionSchema = z.object({
   reason: z.string().trim().min(1).max(500),
 });
 
+/**
+ * The part of a classification only a language model can judge. Content type,
+ * fact status, freshness and discussion popularity are derived in code from
+ * source metadata (see lib/pipeline/signals.ts).
+ */
+export const editorialJudgementSchema = classificationSchema.pick({
+  topics: true,
+  interest_relevance: true,
+  information_value: true,
+  importance: true,
+  discovery_value: true,
+});
+
 export const classificationBatchSchema = z.object({
-  items: z.array(classificationSchema.extend({ index: indexSchema })),
+  items: z.array(editorialJudgementSchema.extend({ index: indexSchema })),
 });
 
 export const summaryBatchSchema = z.object({
@@ -51,5 +64,6 @@ export const summaryBatchSchema = z.object({
 });
 
 export type Classification = z.infer<typeof classificationSchema>;
+export type EditorialJudgement = z.infer<typeof editorialJudgementSchema>;
 export type StorySummary = z.infer<typeof summarySchema>;
 export type DuplicateDecision = z.infer<typeof duplicateDecisionSchema>;

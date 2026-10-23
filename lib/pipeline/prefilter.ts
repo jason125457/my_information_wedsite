@@ -4,7 +4,24 @@ export type PrefilterReason =
   | "duplicate_url"
   | "duplicate_external_id"
   | "invalid_title"
-  | "stale_current";
+  | "stale_current"
+  | "promotional";
+
+/**
+ * Deal posts, giveaways and sponsored content never fit "less, but better",
+ * so they are dropped before any AI call. Phrases are specific on purpose:
+ * a bare "deal" or "sale" would also match trade deals and asset sales.
+ */
+const promotionalPatterns = [
+  /\bbest (?:\w+ )?deals?\b/i,
+  /\bdeal alert\b/i,
+  /\b\d{1,3}% off\b/i,
+  /\b(?:coupon|promo code|discount code)s?\b/i,
+  /\bgiveaway\b/i,
+  /\bsponsored\b/i,
+  /\b(?:black friday|cyber monday|prime day)\b/i,
+  /優惠|折扣碼|特價|限時折扣|抽獎|業配|贊助內容/,
+];
 
 export interface PrefilterRejection {
   candidate: NormalizedCandidate;
@@ -47,6 +64,7 @@ function rejectionReason(
   now: Date,
 ): PrefilterReason | null {
   if (candidate.title.trim().length < 5) return "invalid_title";
+  if (promotionalPatterns.some((pattern) => pattern.test(candidate.title))) return "promotional";
   if (canonicalUrls.has(candidate.canonicalUrl)) return "duplicate_url";
   if (candidate.externalId && externalIds.has(externalKey(candidate))) {
     return "duplicate_external_id";

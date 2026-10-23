@@ -5,8 +5,8 @@
 - **Auth**: Single-user Supabase Auth Magic Link restricted by `ALLOWED_EMAIL`, server-side profile provisioning.
 - **Database & RLS**: Core tables in migrations with RLS; anonymous read access for global content; explicit API grants for new Supabase projects.
 - **Feed UI**: Calm, responsive feed (`/`, `/saved`, `/read-later`, `/history`), topic filtering, unread/read state styles.
-- **Collectors**: RSS/Atom, Hacker News API, Reddit public RSS (multireddits, fetched sequentially), YouTube channel RSS. Per-collector failure isolation. No API keys needed.
-- **AI Pipeline**: Gemini batch classification (25/request) and batch summaries (8/request), deterministic topic-aware ranking, feedback adjustment, event deduplication. Paced requests, retry on per-minute limits, stop on daily quota.
+- **Collectors**: RSS/Atom, Hacker News API, Reddit public RSS (multireddits, one per run in rotation), YouTube channel RSS, feed images. Per-collector failure isolation. No API keys needed.
+- **AI Pipeline**: Gemini judges only topics and four editorial scores (40/request); content type, fact status, freshness and popularity are computed in code. Promotional prefilter, per-run caps (10 stories, 3 per topic), batch summaries (8/request), topic-aware ranking, feedback adjustment, event deduplication. Paced requests, retry on per-minute limits, stop on daily quota.
 - **Personal State**: Persistent Read, Save, Read Later, and Not Interested feedback.
 - **Daily Digest**: Taipei 22:00 idempotent digest of ~15–20 stories; optional LINE push.
 - **Free-tier hosting** (2026-10-22): Cloudflare Workers via OpenNext; scheduled ingestion and digest via GitHub Actions (`.github/workflows/jobs.yml`).

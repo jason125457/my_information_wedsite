@@ -2,12 +2,16 @@ export interface DigestCandidate {
   id: string;
   finalScore: number;
   contentType: "current" | "discovery";
+  /** When present, limits how many picks one topic may take. */
+  primaryTopicId?: string;
 }
 
 export interface DigestSelectionOptions {
   limit?: number;
   minimumScore?: number;
   discoveryRatio?: number;
+  /** Share of the digest one topic may fill (0–1). */
+  maxTopicShare?: number;
 }
 
 export function selectDailyDigest<T extends DigestCandidate>(
@@ -17,20 +21,28 @@ export function selectDailyDigest<T extends DigestCandidate>(
   const limit = clampInteger(options.limit ?? 20, 1, 50);
   const minimumScore = clamp(options.minimumScore ?? 55, 0, 100);
   const discoveryTarget = Math.floor(limit * clamp(options.discoveryRatio ?? 0.2, 0, 1));
+  const maxPerTopic = Math.max(1, Math.ceil(limit * clamp(options.maxTopicShare ?? 0.25, 0, 1)));
   const eligible = deduplicate(candidates)
     .filter((candidate) => candidate.finalScore >= minimumScore)
     .sort((first, second) => second.finalScore - first.finalScore);
-  const discovery = eligible
-    .filter((candidate) => candidate.contentType === "discovery")
-    .slice(0, discoveryTarget);
-  const selectedIds = new Set(discovery.map((candidate) => candidate.id));
-  const remaining = eligible
-    .filter((candidate) => !selectedIds.has(candidate.id))
-    .slice(0, Math.max(0, limit - discovery.length));
 
-  return [...discovery, ...remaining]
-    .sort((first, second) => second.finalScore - first.finalScore)
-    .slice(0, limit);
+  const selected: T[] = [];
+  const perTopic = new Map<string, number>();
+  const pick = (pool: T[], until: number) => {
+    for (const candidate of pool) {
+      if (selected.length >= until) return;
+      if (selected.includes(candidate)) continue;
+      const topic = candidate.primaryTopicId;
+      if (topic && (perTopic.get(topic) ?? 0) >= maxPerTopic) continue;
+      selected.push(candidate);
+      if (topic) perTopic.set(topic, (perTopic.get(topic) ?? 0) + 1);
+    }
+  };
+
+  pick(eligible.filter((candidate) => candidate.contentType === "discovery"), discoveryTarget);
+  pick(eligible, limit);
+
+  return selected.sort((first, second) => second.finalScore - first.finalScore);
 }
 
 function deduplicate<T extends DigestCandidate>(candidates: T[]) {

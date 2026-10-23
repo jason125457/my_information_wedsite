@@ -514,6 +514,8 @@ describe("AI Pipeline Bounded Concurrency", () => {
       now: fixedNow,
       classificationBatchSize: 5,
       summaryBatchSize: 4,
+      maxStories: 100,
+      maxPerTopic: 100,
     });
 
     expect(classifyBatches).toEqual([5, 5, 2]);
