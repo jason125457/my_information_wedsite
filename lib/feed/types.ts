@@ -28,6 +28,8 @@ export interface FeedStory {
   finalScore: number;
   isRead: boolean;
   isSaved: boolean;
+  /** When the story was saved; used to filter the saved knowledge base by date. */
+  savedAt: string | null;
   isReadLater: boolean;
   isNotInterested: boolean;
 }

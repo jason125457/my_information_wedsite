@@ -11,11 +11,13 @@
 - **Daily Digest**: Taipei 22:00 idempotent digest of ~15–20 stories; optional LINE push.
 - **Free-tier hosting** (2026-10-22): Cloudflare Workers via OpenNext; scheduled ingestion and digest via GitHub Actions (`.github/workflows/jobs.yml`).
 - **Seeded sources**: Verified feeds for all 7 topics (`202610220001_free_tier_sources.sql`).
+- **Saved search**: keyword, topic, source and saved-date filters on `/saved` (client-side over up to 500 saved stories).
+- **Settings** (`/settings`): topic weights 1–5 (stored in `topic_preferences`, used by ingestion ranking) and per-source on/off switches.
+- **Today's progress**: the front page tracks how much of today's edition (lead, side list, first grid page, discovery band) has been read and says when you're done.
 - **Job history**: `/settings/jobs` shows recent ingestion and digest runs to the signed-in owner. Ingestion records a partial job without fetching when Gemini is not configured.
 
 ## Next Steps
 1. **First deployment**: follow `DEPLOYMENT.md` (Supabase, Gemini key, GitHub secrets, Cloudflare).
 2. **Tune after a few days of real data**: sources, `minimumScore`, schedule versus the actual Gemini quota.
 3. **Discovery**: programmatic sources are live (Google News search RSS for Taiwan photography and shoegaze, Show HN, Gorilla vs. Bear); consider Gemini search grounding later if quota allows.
-4. **Settings**: `/settings` for topic weights and preferences.
 5. **Weekly Review**: Sunday evening summary of reading habits and saved topics.

@@ -339,6 +339,7 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
       minimumScore: options.minimumScore ?? 60,
       maxCandidates: options.maxTotalCandidates ?? 150,
       feedbackFor: (candidate) => feedbackProfile.feedbackFor(candidate),
+      topicWeights: await loadTopicWeights(supabase, topicMap),
     });
 
     for (const candidate of candidatesToProcess) {
@@ -588,6 +589,31 @@ export function createCollectorFromSource(
     default:
       throw new Error(`Unsupported source type: ${source.type}`);
   }
+}
+
+/**
+ * Topic weights from the owner's settings page (topic_preferences), falling
+ * back to each topic's default weight. Single-user app: any profile's rows are
+ * the owner's. Missing data leaves processCandidates on its built-in defaults.
+ */
+async function loadTopicWeights(
+  supabase: AdminClient,
+  topicMap: Map<string, ContentTopic>,
+): Promise<Partial<Record<ContentTopic, number>>> {
+  const weights: Partial<Record<ContentTopic, number>> = {};
+  const [defaults, preferences] = await Promise.all([
+    supabase.from("topics").select("id, default_weight"),
+    supabase.from("topic_preferences").select("topic_id, weight"),
+  ]);
+  for (const row of defaults.data ?? []) {
+    const slug = topicMap.get(row.id);
+    if (slug && typeof row.default_weight === "number") weights[slug] = row.default_weight;
+  }
+  for (const row of preferences.data ?? []) {
+    const slug = topicMap.get(row.topic_id);
+    if (slug && typeof row.weight === "number") weights[slug] = row.weight;
+  }
+  return weights;
 }
 
 /** Two-hour slot index, matching the ingestion schedule. */
