@@ -64,7 +64,7 @@ The Worker has no public route (`workers_dev: false`). Its logs (Cloudflare dash
 
 ## 4. Cloudflare Workers (web app)
 
-**Current production setup (2026-10-23):** Worker `personal-feed` on the custom domain `www.shuns.site` (declared in `wrangler.jsonc`), deployed with wrangler from a local checkout. Worker secrets: `SUPABASE_SERVICE_ROLE_KEY`, `ALLOWED_EMAIL`. Supabase Auth `site_url` and redirect URLs are managed in `supabase/config.toml` (`npx supabase config push`).
+**Current production setup (2026-10-23):** Worker `personal-feed` on the custom domain `feed.shuns.site` (moved from `www.shuns.site` on 2026-10-26; `www` and the apex now serve the separate portfolio site, repo `jason125457/shuns-site`) (declared in `wrangler.jsonc`), deployed with wrangler from a local checkout. Worker secrets: `SUPABASE_SERVICE_ROLE_KEY`, `ALLOWED_EMAIL`. Supabase Auth `site_url` and redirect URLs are managed in `supabase/config.toml` (`npx supabase config push`).
 
 **Automatic deploys:** `.github/workflows/deploy.yml` runs lint, typecheck, and tests, then builds and deploys on every push to `main`. It needs the repository secret `CLOUDFLARE_API_TOKEN` (created from the "Edit Cloudflare Workers" token template, scoped to this account and the `shuns.site` zone) and the variable `CLOUDFLARE_ACCOUNT_ID`.
 
