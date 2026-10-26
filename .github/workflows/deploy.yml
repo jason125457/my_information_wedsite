@@ -1,6 +1,6 @@
 name: Deploy
 
-# Deploys the web app to Cloudflare Workers (www.shuns.site) whenever main
+# Deploys the web app to Cloudflare Workers (feed.shuns.site) whenever main
 # changes. The full check runs first so a broken commit never ships.
 on:
   push:
