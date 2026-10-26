@@ -42,3 +42,11 @@ enable_anonymous_sign_ins = false
 enable_signup = true
 double_confirm_changes = true
 enable_confirmations = true
+# The iPhone home-screen app keeps its own cookies, and email links always open
+# in Safari, so the email also carries a code that can be typed into the app.
+otp_length = 6
+otp_expiry = 3600
+
+[auth.email.template.magic_link]
+subject = "Personal Feed 登入連結與驗證碼"
+content_path = "./supabase/templates/magic-link.html"

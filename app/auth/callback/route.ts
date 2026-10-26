@@ -1,11 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import {
-  isAllowedEmail,
-  normalizeEmail,
-  safeNextPath,
-} from "@/lib/auth/authorization";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { safeNextPath } from "@/lib/auth/authorization";
+import { completeSignIn } from "@/lib/auth/complete-sign-in";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
@@ -21,23 +17,15 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
-    if (error || !data.user || !isAllowedEmail(data.user.email)) {
-      await supabase.auth.signOut();
-      return NextResponse.redirect(new URL("/login?error=not-allowed", url.origin));
+    // A failed exchange usually means the link was opened in a different browser than the one
+    // that asked for it (e.g. the iPhone home-screen app vs Safari), not a wrong email.
+    if (error) {
+      return NextResponse.redirect(new URL("/login?error=callback", url.origin));
     }
 
-    const admin = createAdminClient();
-    const { error: profileError } = await admin.from("profiles").upsert(
-      {
-        id: data.user.id,
-        email: normalizeEmail(data.user.email!),
-      },
-      { onConflict: "id" },
-    );
-
-    if (profileError) {
-      await supabase.auth.signOut();
-      return NextResponse.redirect(new URL("/login?error=configuration", url.origin));
+    const result = await completeSignIn(supabase, data.user);
+    if (result !== "ok") {
+      return NextResponse.redirect(new URL(`/login?error=${result}`, url.origin));
     }
 
     return NextResponse.redirect(new URL(next, url.origin));

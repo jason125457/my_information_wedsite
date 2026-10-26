@@ -1,9 +1,10 @@
 import { ArrowRight, CheckCircle2, LockKeyhole } from "lucide-react";
 import { redirect } from "next/navigation";
 
-import { requestMagicLink } from "@/app/login/actions";
+import { requestMagicLink, verifyLoginCode } from "@/app/login/actions";
 import { buttonVariants } from "@/components/ui/button";
 import { isAllowedEmail } from "@/lib/auth/authorization";
+import { LOGIN_CODE_LENGTH } from "@/lib/auth/login-code";
 import { cn } from "@/lib/utils";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
@@ -11,7 +12,11 @@ import { createClient } from "@/lib/supabase/server";
 const errorMessages: Record<string, string> = {
   "not-allowed": "請使用設定好的那一個 email 登入。",
   configuration: "登入功能尚未設定，請檢查環境設定。",
-  callback: "登入連結無效或已過期，請重新寄一封。",
+  callback:
+    "登入連結無效或已過期。如果你是從 iPhone 主畫面的 App 登入，請改輸入信裡的 6 位數驗證碼。",
+  code: "驗證碼不正確或已過期。請再確認一次，或重新寄一封。",
+  "code-format": "請輸入信裡的 6 位數驗證碼。",
+  "code-expired": "這個畫面放太久了，請重新輸入 email 寄一封登入信。",
 };
 
 interface LoginPageProps {
@@ -43,17 +48,59 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           你在網路上比較安靜的角落。
         </h1>
         <p className="mt-4 text-base leading-7 text-[var(--muted)]">
-          瀏覽不需要登入。登入後可以收藏、稍後閱讀和提供回饋。我們會寄一封登入連結到你的信箱，不需要密碼。
+          瀏覽不需要登入。登入後可以收藏、稍後閱讀和提供回饋。我們會寄一封附登入連結和驗證碼的信到你的信箱，不需要密碼。
         </p>
 
         {wasSent ? (
-          <div className="mt-8 rounded-2xl border border-[var(--success)] bg-[var(--success-soft)] p-4 text-sm leading-6 text-[var(--success)]">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="mt-0.5 shrink-0" aria-hidden="true" size={18} />
-              <p>
-                如果這個 email 有權限，登入連結已經寄出。點開信裡的連結後，這個分頁就可以關掉。
-              </p>
+          <div className="mt-8 space-y-6">
+            <div className="rounded-2xl border border-[var(--success)] bg-[var(--success-soft)] p-4 text-sm leading-6 text-[var(--success)]">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 shrink-0" aria-hidden="true" size={18} />
+                <p>
+                  如果這個 email 有權限，信已經寄出。在電腦上可以直接點信裡的連結；在 iPhone
+                  主畫面的 App 裡，請在下面輸入信裡的驗證碼。
+                </p>
+              </div>
             </div>
+
+            <form action={verifyLoginCode} className="space-y-4">
+              <div>
+                <label htmlFor="code" className="mb-2 block text-sm font-semibold text-[var(--ink)]">
+                  {LOGIN_CODE_LENGTH} 位數驗證碼
+                </label>
+                <input
+                  id="code"
+                  name="code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  required
+                  aria-describedby={errorMessages[errorKey] ? "login-error" : undefined}
+                  placeholder="123456"
+                  className="h-12 w-full rounded-xl border border-[var(--line-strong)] bg-[var(--surface)] px-4 font-mono text-lg tracking-[0.3em] text-[var(--ink)] outline-none transition focus:border-[var(--accent)] focus:ring-3 focus:ring-[var(--accent-soft)]"
+                />
+              </div>
+              {errorMessages[errorKey] ? (
+                <p
+                  id="login-error"
+                  role="alert"
+                  className="rounded-xl bg-[var(--danger-soft)] px-4 py-3 text-sm leading-6 text-[var(--danger)]"
+                >
+                  {errorMessages[errorKey]}
+                </p>
+              ) : null}
+              <button type="submit" className={cn(buttonVariants({ variant: "primary" }), "h-12 w-full")}>
+                用驗證碼登入
+                <ArrowRight aria-hidden="true" size={17} />
+              </button>
+            </form>
+
+            <a
+              href="/login"
+              className="inline-flex min-h-11 items-center text-sm font-semibold text-[var(--accent)] underline-offset-4 hover:underline"
+            >
+              沒收到信？重新輸入 email
+            </a>
           </div>
         ) : (
           <form action={requestMagicLink} className="mt-8 space-y-4">
