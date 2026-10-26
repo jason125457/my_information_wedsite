@@ -307,7 +307,7 @@ MVP 不做 conversational chatbot。可保留只用於 LINE 驗證與首次綁�
 
 ## 22. Authentication
 
-MVP 採 Single User Mode。Feed 與 Daily Digest 不強制登入；Save、Read Later、History 與 Not Interested 等個人化功能使用 Supabase Auth Magic Link，只允許 `ALLOWED_EMAIL` 指定的 email。禁止公開註冊，不建立一般帳號管理功能。
+MVP 採 Single User Mode。Feed 與 Daily Digest 不強制登入；Save、Read Later、History 與 Not Interested 等個人化功能使用 Supabase Auth Magic Link，只允許 `ALLOWED_EMAIL` 指定的 email。登入信同時附上 6 位數驗證碼：iPhone 主畫面 App 和 Safari 的 Cookie 互不相通，而信裡的連結一定在 Safari 開啟，所以在 App 裡要改輸入驗證碼登入。禁止公開註冊，不建立一般帳號管理功能。
 
 ## 23. Product Philosophy
 
