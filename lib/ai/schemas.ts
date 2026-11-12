@@ -33,6 +33,8 @@ export const classificationSchema = z.object({
 export const summarySchema = z.object({
   title: z.string().trim().min(1).max(300),
   summary: z.string().trim().min(1).max(1_200),
+  /** The article's main points, so the reader rarely needs the original. */
+  key_points: z.array(z.string().trim().min(1).max(300)).max(5),
   why_recommended: z.string().trim().min(1).max(400),
 });
 

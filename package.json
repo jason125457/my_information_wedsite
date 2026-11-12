@@ -17,6 +17,7 @@
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf:build": "opennextjs-cloudflare build",
     "job:backfill-images": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/backfill-images.ts",
+    "job:backfill-key-points": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/backfill-key-points.ts",
     "job:weekly": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/weekly.ts"
   },
   "dependencies": {

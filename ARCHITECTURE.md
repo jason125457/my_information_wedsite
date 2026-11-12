@@ -192,7 +192,9 @@ MVP 使用 rule-based feedback 加 LLM ranking。Save 增加相似內容權重�
 
 ## 9. Summary Generation
 
-每個 Story 產生 title、2～3 句 summary 與 1 句 `why_recommended`。摘要不得創造來源不存在的資訊，不得把 Reddit 推測寫成已確認事實，也不得隱藏來源性質。
+每個 Story 產生繁體中文 title、3～5 句 summary、3～5 條 `key_points`（數字、人名、原因、影響等細節，讓使用者不必點開原文）與 1 句 `why_recommended`。摘要不得創造來源不存在的資訊，不得把 Reddit 推測寫成已確認事實，也不得隱藏來源性質。
+
+**原文全文（2026-11-12 決策）**：RSS excerpt 通常只有一兩句，不足以寫出重點。因此在排名與上限篩選**之後**，只針對入選的 Story（每輪最多 10 則）以 `lib/article/extract.ts` 抓取原文頁面，擷取 `<article>`／`<main>` 內的段落（上限 6,000 字元）送進摘要請求，用完即丟、不寫入資料庫。抓不到（403、需要 JavaScript、付費牆、Google News 轉址、Reddit）就退回 feed excerpt，此時 AI 會寫較少重點而不是編造。不繞過付費牆或反爬蟲機制。
 
 ## 10. Core Database Schema
 
@@ -251,6 +253,7 @@ MVP 使用 rule-based feedback 加 LLM ranking。Save 增加相似內容權重�
 - `id uuid primary key`
 - `title text not null`
 - `summary text not null`
+- `key_points text[] not null default '{}'`
 - `why_recommended text not null`
 - `primary_topic_id uuid references topics`
 - `content_type text check (content_type in ('current', 'discovery'))`

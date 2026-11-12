@@ -123,7 +123,7 @@ describe("per-run topic caps", () => {
       summarizeMany: async (batch: Array<{ candidate: NormalizedCandidate }>) =>
         batch.map(({ candidate: item }): StorySummary => {
           summarized.push(item.externalId ?? "");
-          return { title: `中文：${item.title}`, summary: "一。二。", why_recommended: "理由。" };
+          return { title: `中文：${item.title}`, summary: "一。二。", key_points: [], why_recommended: "理由。" };
         }),
       decideDuplicate: vi.fn(async () => ({ same_event: false, confidence: 0.9, reason: "different" })),
     } as unknown as StoryAIEditor;
@@ -220,6 +220,7 @@ describe("untranslated titles", () => {
           return {
             title: english ? `${item.title} (English)` : `中文標題：${item.externalId}`,
             summary: "一。二。",
+            key_points: [],
             why_recommended: "理由。",
           };
         });
@@ -254,7 +255,7 @@ describe("per-run source cap", () => {
     const editor = {
       classifyMany: async (batch: NormalizedCandidate[]) => batch.map(() => judgement),
       summarizeMany: async (batch: Array<{ candidate: NormalizedCandidate }>) =>
-        batch.map(({ candidate: item }): StorySummary => ({ title: `中文：${item.title}`, summary: "一。二。", why_recommended: "理由。" })),
+        batch.map(({ candidate: item }): StorySummary => ({ title: `中文：${item.title}`, summary: "一。二。", key_points: [], why_recommended: "理由。" })),
       decideDuplicate: vi.fn(async () => ({ same_event: false, confidence: 0.9, reason: "different" })),
     } as unknown as StoryAIEditor;
 

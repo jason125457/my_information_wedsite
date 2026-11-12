@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Bookmark, Clock3, EyeOff } from "lucide-react";
 
-import { StoryMedia, StoryMeta, TopicChip, WhyLine } from "@/components/feed/story-parts";
+import { StoryDigest, StoryMedia, StoryMeta, TopicChip, WhyLine } from "@/components/feed/story-parts";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { feedbackReasons, type FeedbackReason } from "@/lib/feed/state";
 import type { FeedStory } from "@/lib/feed/types";
@@ -48,7 +48,7 @@ export function FeedCard({ story, actions }: { story: FeedStory; actions: StoryA
             {story.title}
           </a>
         </h3>
-        <p className="line-clamp-3 text-[15px] leading-[1.7] text-[var(--ink-soft)]">{story.summary}</p>
+        <StoryDigest story={story} className="text-[15px] leading-[1.7] text-[var(--ink-soft)]" />
         <WhyLine story={story} />
         <div className="mt-auto pt-1">
           <StoryMeta story={story} />

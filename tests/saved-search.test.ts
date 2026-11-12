@@ -10,6 +10,7 @@ function story(overrides: Partial<FeedStory>): FeedStory {
     id: "s",
     title: "標題",
     summary: "摘要",
+    keyPoints: [],
     whyRecommended: "理由",
     source: "Source",
     sourceCount: 1,

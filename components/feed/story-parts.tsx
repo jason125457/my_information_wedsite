@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles } from "lucide-react";
+import { ChevronDown, Sparkles } from "lucide-react";
 
 import type { FeedStory } from "@/lib/feed/types";
 import { cn } from "@/lib/utils";
@@ -103,5 +103,67 @@ export function WhyLine({ story }: { story: FeedStory }) {
         {story.whyRecommended}
       </span>
     </p>
+  );
+}
+
+/**
+ * The AI summary plus its key points. Cards start collapsed (summary clamped,
+ * points hidden) and expand in place; `open` renders everything, for the lead story.
+ */
+export function StoryDigest({
+  story,
+  tone = "paper",
+  open = false,
+  className,
+}: {
+  story: FeedStory;
+  tone?: "paper" | "night";
+  open?: boolean;
+  className?: string;
+}) {
+  const [expanded, setExpanded] = useState(open);
+  const points = story.keyPoints;
+  const showAll = open || expanded;
+
+  return (
+    <div className="space-y-2.5">
+      <p className={cn(className, !showAll && "line-clamp-3")}>{story.summary}</p>
+      {showAll && points.length ? (
+        <ul
+          aria-label="重點"
+          data-topic={story.topic}
+          className={cn(
+            "space-y-1.5 border-l-2 pl-3.5 text-[14.5px] leading-[1.7]",
+            tone === "paper"
+              ? "border-[color-mix(in_srgb,var(--topic)_55%,var(--surface))] text-[var(--ink)]"
+              : "border-[color-mix(in_srgb,var(--topic)_60%,#111)] text-zinc-200",
+          )}
+        >
+          {points.map((point) => (
+            <li key={point} className="relative pl-3.5">
+              <span
+                aria-hidden="true"
+                className="absolute top-[0.72em] left-0 size-1.5 rounded-full bg-[var(--topic)]"
+              />
+              {point}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {!open && (points.length || story.summary.length > 90) ? (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+          className={cn(
+            "inline-flex min-h-8 items-center gap-1 rounded-md text-[13px] font-semibold",
+            tone === "paper" ? "text-[var(--accent)] hover:underline" : "text-teal-300 hover:underline",
+          )}
+        >
+          {expanded ? "收起" : points.length ? `展開重點（${points.length}）` : "展開摘要"}
+          <ChevronDown aria-hidden="true" size={15} className={cn("transition-transform", expanded && "rotate-180")} />
+        </button>
+      ) : null}
+    </div>
   );
 }

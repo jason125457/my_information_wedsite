@@ -9,6 +9,7 @@ import {
   type ContentTopic,
   type NormalizedCandidate,
 } from "@/lib/collectors";
+import { fetchArticleText } from "@/lib/article/extract";
 import { choosePrimarySource, type SourceChoice, type SourceReliability } from "@/lib/dedupe";
 import { prefilterCandidates } from "@/lib/pipeline/prefilter";
 import { processCandidates } from "@/lib/pipeline/process";
@@ -340,6 +341,8 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
       maxCandidates: options.maxTotalCandidates ?? 150,
       feedbackFor: (candidate) => feedbackProfile.feedbackFor(candidate),
       topicWeights: await loadTopicWeights(supabase, topicMap),
+      fetchArticleText: (url) =>
+        fetchArticleText(url, { fetchImplementation: options.fetchImplementation }),
     });
 
     for (const candidate of candidatesToProcess) {
@@ -414,6 +417,7 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
           title: storyDraft.summary.title,
           summary: storyDraft.summary.summary,
           why_recommended: storyDraft.summary.why_recommended,
+          key_points: storyDraft.summary.key_points,
           primary_topic_id: topicId,
           content_type: storyDraft.classification.content_type,
           interest_relevance: storyDraft.classification.interest_relevance,

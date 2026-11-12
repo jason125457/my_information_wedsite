@@ -26,6 +26,8 @@ interface RankedCandidate {
 export interface StoryDraft extends RankedCandidate {
   additionalSources: NormalizedCandidate[];
   summary: StorySummary;
+  /** Transient original-page text used for the summary; never persisted. */
+  articleText?: string | null;
 }
 
 export interface ProcessingFailure {
@@ -58,6 +60,11 @@ export interface ProcessingOptions {
   maxPerTopic?: number;
   /** Most new stories one source may contribute per run. */
   maxPerSource?: number;
+  /**
+   * Fetches a selected story's original page text so the summary can cover
+   * the whole article. Omitted in tests; null means "use the feed excerpt".
+   */
+  fetchArticleText?: (url: string) => Promise<string | null>;
 }
 
 export async function processCandidates(
@@ -115,7 +122,9 @@ export async function processCandidates(
   // Walk candidates best-first. Each either joins an already selected story as
   // another source, or becomes a new story while the run and its topic still
   // have room. Strong candidates beyond the caps are evaluated but not kept.
-  const groups: Array<RankedCandidate & { additionalSources: NormalizedCandidate[] }> = [];
+  const groups: Array<
+    RankedCandidate & { additionalSources: NormalizedCandidate[]; articleText?: string | null }
+  > = [];
   const perTopic = new Map<string, number>();
   const perSource = new Map<string, number>();
 
@@ -153,6 +162,16 @@ export async function processCandidates(
     groups.push({ ...item, additionalSources: [] });
     perTopic.set(topic, (perTopic.get(topic) ?? 0) + 1);
     perSource.set(source, (perSource.get(source) ?? 0) + 1);
+  }
+
+  // Only the few selected stories are fetched, in parallel, and only once.
+  if (options.fetchArticleText && !quotaError) {
+    const fetchText = options.fetchArticleText;
+    await Promise.all(
+      groups.map(async (group) => {
+        group.articleText = await fetchText(group.candidate.url).catch(() => null);
+      }),
+    );
   }
 
   const stories: StoryDraft[] = [];

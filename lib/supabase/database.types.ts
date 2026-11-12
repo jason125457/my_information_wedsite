@@ -87,6 +87,7 @@ export interface Database {
           title: string;
           summary: string;
           why_recommended: string;
+          key_points: string[];
           primary_topic_id: string;
           content_type: "current" | "discovery";
           interest_relevance: number;
@@ -106,6 +107,7 @@ export interface Database {
           title: string;
           summary: string;
           why_recommended: string;
+          key_points?: string[];
           primary_topic_id: string;
           content_type: "current" | "discovery";
           interest_relevance: number;

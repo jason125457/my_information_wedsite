@@ -19,7 +19,7 @@ export const emptySavedSearch: SavedSearch = { query: "", source: "all", period:
 
 /**
  * Keyword, source and saved-date filtering for the saved knowledge base.
- * Every whitespace-separated term must appear in the title, summary,
+ * Every whitespace-separated term must appear in the title, summary, key points,
  * recommendation reason or source name (case-insensitive).
  */
 export function searchSaved(stories: FeedStory[], search: SavedSearch, now = new Date()): FeedStory[] {
@@ -34,7 +34,7 @@ export function searchSaved(stories: FeedStory[], search: SavedSearch, now = new
       if (Number.isNaN(savedAt) || savedAt < since) return false;
     }
     if (!terms.length) return true;
-    const haystack = [story.title, story.summary, story.whyRecommended, story.source]
+    const haystack = [story.title, story.summary, ...story.keyPoints, story.whyRecommended, story.source]
       .join("\n")
       .toLocaleLowerCase("zh-TW");
     return terms.every((term) => haystack.includes(term));
