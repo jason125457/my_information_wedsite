@@ -5,7 +5,7 @@ import { CheckCircle2, Inbox, Search } from "lucide-react";
 import { flushSync } from "react-dom";
 
 import { FeedCard, StoryActionBar, type StoryActions } from "@/components/feed/feed-card";
-import { StoryMedia, StoryMeta, TopicChip, WhyLine } from "@/components/feed/story-parts";
+import { StoryDigest, StoryMedia, StoryMeta, TopicChip, WhyLine } from "@/components/feed/story-parts";
 import { Button } from "@/components/ui/button";
 import {
   markStoryNotInterested,
@@ -387,7 +387,7 @@ function LeadStory({ story, actions }: { story: FeedStory; actions: StoryActions
             {story.title}
           </a>
         </h2>
-        <p className="text-[17px] leading-[1.75] text-[var(--ink-soft)]">{story.summary}</p>
+        <StoryDigest story={story} open className="text-[17px] leading-[1.75] text-[var(--ink-soft)]" />
         <WhyLine story={story} />
         <StoryMeta story={story} />
         <div className="max-w-md">
@@ -419,7 +419,7 @@ function DiscoveryBand({ stories, actionsFor }: { stories: FeedStory[]; actionsF
                     {story.title}
                   </a>
                 </h3>
-                <p className="line-clamp-3 text-sm leading-[1.7] text-zinc-300">{story.summary}</p>
+                <StoryDigest story={story} tone="night" className="text-sm leading-[1.7] text-zinc-300" />
                 <div className="mt-auto pt-1">
                   <StoryMeta story={story} tone="night" />
                 </div>

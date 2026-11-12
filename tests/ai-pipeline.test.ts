@@ -48,6 +48,7 @@ describe("AI output contracts", () => {
     const summary: StorySummary = {
       title: "A grounded summary",
       summary: "這是第一句。這是第二句。",
+      key_points: ["重點一。"],
       why_recommended: "與你的 AI 工具興趣相關。",
     };
     const provider = createBatchProvider({
@@ -256,6 +257,7 @@ describe("processing orchestration", () => {
       summarize: () => ({
         title: "OpenAI 推出新的 coding agent",
         summary: "官方來源公布一項新的開發工具。另一來源報導同一事件。",
+        key_points: [],
         why_recommended: "與你的 AI coding 興趣高度相關。",
       }),
       onRequest: (request, items) => {

@@ -32,6 +32,7 @@ function createMockEditor(): StoryAIEditor {
   const defaultSummary: StorySummary = {
     title: "AI Breakthrough Announcement",
     summary: "This is the first sentence. This is the second sentence.",
+    key_points: ["First point."],
     why_recommended: "Directly relates to your AI interests.",
   };
 
@@ -144,6 +145,7 @@ function createMockSupabase(initialState?: Partial<MockDatabaseState>) {
                       ...storyData,
                       published_at: storyData.published_at ?? null,
                       image_url: storyData.image_url ?? null,
+                      key_points: storyData.key_points ?? [],
                     };
                     state.stories.push(row);
                     return Promise.resolve({ data: row, error: null });

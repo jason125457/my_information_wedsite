@@ -235,7 +235,8 @@ Topic Weight 影響推薦排序，不代表固定文章配額。
 首頁卡片保持簡潔，每張卡包含：
 
 - Title：原始標題或忠於原意的合理整理
-- Summary：AI 產生的 2～3 句摘要
+- Summary：AI 產生的 3～5 句繁體中文摘要
+- Key Points：3～5 條重點（卡片上可展開，頭條直接顯示），讓使用者不必閱讀原文也能掌握內容
 - Why You Might Like This：一句說明為何值得看
 - Metadata：Source、Publish Time、Topic、Content Type
 - Actions：View Original、Read Later、Save、Not Interested

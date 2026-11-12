@@ -59,7 +59,7 @@ export async function loadStoriesByIds(
 
   const { data: storyRows, error: storyError } = await supabase
     .from("stories")
-    .select("id,title,summary,why_recommended,primary_topic_id,content_type,primary_url,published_at,image_url,final_score")
+    .select("id,title,summary,key_points,why_recommended,primary_topic_id,content_type,primary_url,published_at,image_url,final_score")
     .in("id", orderedUniqueIds);
 
   if (storyError) throw new Error(`Unable to load stories: ${storyError.message}`);
@@ -126,6 +126,7 @@ export async function loadStoriesByIds(
       id: story.id,
       title: story.title,
       summary: story.summary,
+      keyPoints: story.key_points ?? [],
       whyRecommended: story.why_recommended,
       source: source?.name ?? "Original source",
       sourceCount: Math.max(1, links.length),

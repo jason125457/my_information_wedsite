@@ -20,6 +20,8 @@ import { weeklyInstructions } from "@/prompts/weekly";
 export interface SummaryRequest {
   candidate: NormalizedCandidate;
   classification: Classification;
+  /** Readable text of the original page, fetched transiently; null when unavailable. */
+  articleText?: string | null;
 }
 
 /**
@@ -55,13 +57,14 @@ export class StoryAIEditor {
       schema: summaryBatchSchema,
       instructions: summaryInstructions,
       input: JSON.stringify({
-        items: requests.map(({ candidate, classification }, index) => ({
+        items: requests.map(({ candidate, classification, articleText }, index) => ({
           index,
           ...serializeCandidate(candidate),
+          article_text: articleText ?? null,
           classification,
         })),
       }),
-      maxOutputTokens: 600 * requests.length + 500,
+      maxOutputTokens: 1_400 * requests.length + 500,
     });
 
     return alignByIndex(output.items, requests.length);

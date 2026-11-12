@@ -15,6 +15,8 @@ export interface FeedStory {
   id: string;
   title: string;
   summary: string;
+  /** AI key points; empty for stories written before they existed. */
+  keyPoints: string[];
   whyRecommended: string;
   source: string;
   sourceCount: number;
