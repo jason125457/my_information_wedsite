@@ -12,7 +12,13 @@ import {
 import { fetchArticleText } from "@/lib/article/extract";
 import { choosePrimarySource, type SourceChoice, type SourceReliability } from "@/lib/dedupe";
 import { prefilterCandidates } from "@/lib/pipeline/prefilter";
-import { processCandidates } from "@/lib/pipeline/process";
+import {
+  DEFAULT_MAX_PER_SOURCE,
+  DEFAULT_MAX_PER_TOPIC,
+  DEFAULT_MAX_STORIES,
+  processCandidates,
+  type ExistingStory,
+} from "@/lib/pipeline/process";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database, Json } from "@/lib/supabase/database.types";
 import { loadFeedbackProfile, type FeedbackProfile } from "@/lib/ranking";
@@ -26,6 +32,8 @@ export interface SourceIngestStats {
   processedCount: number;
   insertedCount: number;
   duplicateCount: number;
+  /** New items merged into a story an earlier run created (same event). */
+  attachedCount: number;
   error: string | null;
 }
 
@@ -35,6 +43,7 @@ export interface IngestionJobTotals {
   duplicates: number;
   processed: number;
   storiesCreated: number;
+  attached: number;
   failures: number;
 }
 
@@ -62,7 +71,13 @@ export interface IngestOptions {
   minimumScore?: number;
   maxCandidatesPerSource?: number;
   maxTotalCandidates?: number;
+  maxStories?: number;
+  maxPerTopic?: number;
+  maxPerSource?: number;
 }
+
+/** Stories this recent are matched against new candidates (same event window as dedupe). */
+const EXISTING_STORY_WINDOW_HOURS = 72;
 
 interface CandidateChoice extends SourceChoice {
   candidate: NormalizedCandidate;
@@ -134,6 +149,7 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
       processedCount: 0,
       insertedCount: 0,
       duplicateCount: 0,
+      attachedCount: 0,
       error: null,
     });
   }
@@ -335,10 +351,16 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     const feedbackProfile =
       options.feedbackProfile ?? (await loadFeedbackProfile(supabase));
 
+    const existingStories = await loadExistingStories(supabase, now, topicMap, sources);
+
     const processingResult = await processCandidates(candidatesToProcess, editor, {
       now,
       minimumScore: options.minimumScore ?? 60,
       maxCandidates: options.maxTotalCandidates ?? 150,
+      maxStories: options.maxStories ?? DEFAULT_MAX_STORIES,
+      maxPerTopic: options.maxPerTopic ?? DEFAULT_MAX_PER_TOPIC,
+      maxPerSource: options.maxPerSource ?? DEFAULT_MAX_PER_SOURCE,
+      existingStories,
       feedbackFor: (candidate) => feedbackProfile.feedbackFor(candidate),
       topicWeights: await loadTopicWeights(supabase, topicMap),
       fetchArticleText: (url) =>
@@ -472,11 +494,40 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
       }
     }
 
+    // 8c. Candidates about an event that already has a card become extra
+    // sources of that story. No new story, no new summary.
+    let totalAttached = 0;
+    for (const attachment of processingResult.attachments) {
+      const links = attachment.candidates.flatMap((candidate) => {
+        const rawItemId = rawItemsMap.get(candidate.canonicalUrl);
+        return rawItemId ? [{ candidate, rawItemId }] : [];
+      });
+      if (!links.length) continue;
+
+      const { error: linkError } = await supabase.from("story_sources").upsert(
+        links.map(({ rawItemId }) => ({
+          story_id: attachment.storyId,
+          raw_item_id: rawItemId,
+          is_primary: false,
+        })),
+        { onConflict: "story_id,raw_item_id" },
+      );
+      if (linkError) {
+        console.error("Failed to attach sources to existing story:", linkError.message);
+        continue;
+      }
+      for (const { candidate } of links) {
+        totalAttached += 1;
+        const stat = statsBySource.get(candidate.sourceId);
+        if (stat) stat.attachedCount += 1;
+      }
+    }
+
     // 9. Finalize job_runs record
     const totals = computeTotals(statsBySource, totalStoriesCreated);
     const hasSourceErrors = Array.from(statsBySource.values()).some((s) => s.error !== null);
     const status = hasSourceErrors
-      ? totalStoriesCreated > 0
+      ? totalStoriesCreated + totalAttached > 0
         ? "partial"
         : "failed"
       : "succeeded";
@@ -620,6 +671,88 @@ async function loadTopicWeights(
   return weights;
 }
 
+type ExistingRawItem = Pick<
+  Database["public"]["Tables"]["raw_items"]["Row"],
+  "id" | "source_id" | "external_id" | "url" | "canonical_url" | "title" | "excerpt" | "published_at"
+>;
+
+/**
+ * Recent stories with their primary source's raw item, so a new candidate is
+ * compared on the original-language title (story titles are Chinese), URL and
+ * publish time. A lookup failure only disables cross-run merging for this run.
+ */
+async function loadExistingStories(
+  supabase: AdminClient,
+  now: Date,
+  topicMap: Map<string, ContentTopic>,
+  sources: SourceRow[],
+): Promise<ExistingStory[]> {
+  try {
+    const since = new Date(now.getTime() - EXISTING_STORY_WINDOW_HOURS * 3_600_000).toISOString();
+    const { data: stories, error } = await supabase
+      .from("stories")
+      .select("id, primary_topic_id")
+      .gte("created_at", since)
+      .limit(1000);
+    if (error) throw new Error(error.message);
+    if (!stories?.length) return [];
+
+    const primaryRawByStory = new Map<string, string>();
+    const storyIds = stories.map((story) => story.id);
+    for (let i = 0; i < storyIds.length; i += 100) {
+      const { data, error: linkError } = await supabase
+        .from("story_sources")
+        .select("story_id, raw_item_id, is_primary")
+        .in("story_id", storyIds.slice(i, i + 100));
+      if (linkError) throw new Error(linkError.message);
+      for (const link of data ?? []) {
+        if (link.is_primary) primaryRawByStory.set(link.story_id, link.raw_item_id);
+      }
+    }
+
+    const rawById = new Map<string, ExistingRawItem>();
+    const rawIds = [...new Set(primaryRawByStory.values())];
+    for (let i = 0; i < rawIds.length; i += 100) {
+      const { data, error: rawError } = await supabase
+        .from("raw_items")
+        .select("id, source_id, external_id, url, canonical_url, title, excerpt, published_at")
+        .in("id", rawIds.slice(i, i + 100));
+      if (rawError) throw new Error(rawError.message);
+      for (const row of data ?? []) rawById.set(row.id, row);
+    }
+
+    const sourceById = new Map(sources.map((source) => [source.id, source]));
+    return stories.flatMap((story) => {
+      const rawId = primaryRawByStory.get(story.id);
+      const raw = rawId ? rawById.get(rawId) : undefined;
+      if (!raw) return [];
+      const source = sourceById.get(raw.source_id);
+      const candidate: NormalizedCandidate = {
+        sourceId: raw.source_id,
+        sourceName: source?.name ?? "Original source",
+        sourceType: (source?.type ?? "rss") as NormalizedCandidate["sourceType"],
+        externalId: raw.external_id,
+        url: raw.url,
+        canonicalUrl: raw.canonical_url,
+        title: raw.title,
+        excerpt: raw.excerpt,
+        publishedAt: raw.published_at,
+        topic: topicMap.get(story.primary_topic_id) ?? "technology",
+        isDiscovery: source?.is_discovery ?? false,
+        engagement: {},
+        rawMetadata: {},
+      };
+      return [{ storyId: story.id, candidate }];
+    });
+  } catch (error) {
+    console.error(
+      "Failed to load recent stories for cross-run dedupe:",
+      error instanceof Error ? error.message : error,
+    );
+    return [];
+  }
+}
+
 /** Two-hour slot index, matching the ingestion schedule. */
 function redditSlot(now: Date) {
   return Math.floor(now.getTime() / (2 * 60 * 60 * 1000));
@@ -650,6 +783,7 @@ function computeTotals(
   let filtered = 0;
   let duplicates = 0;
   let processed = 0;
+  let attached = 0;
   let failures = 0;
 
   for (const stat of statsMap.values()) {
@@ -657,6 +791,7 @@ function computeTotals(
     filtered += stat.filteredCount;
     duplicates += stat.duplicateCount;
     processed += stat.processedCount;
+    attached += stat.attachedCount;
     if (stat.error !== null) failures += 1;
   }
 
@@ -666,6 +801,7 @@ function computeTotals(
     duplicates,
     processed,
     storiesCreated,
+    attached,
     failures,
   };
 }

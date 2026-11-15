@@ -334,9 +334,9 @@ describe("Feed Query Separation (Story #51+ beyond global Top 50)", () => {
     const feed = await loadFeed(client, "user-1", "all");
 
     // No story is recent, so the front page falls back to the all-time best.
-    // All seeded stories share one topic, which may fill a quarter of the 60
-    // slots (15); the not-interested one is excluded => 14 returned
-    expect(feed).toHaveLength(14);
+    // All seeded stories share one topic, which may fill a quarter of the 20
+    // slots (5); the not-interested one is excluded => 4 returned
+    expect(feed).toHaveLength(4);
     expect(feed.some((item) => item.id === "story-1")).toBe(false);
     expect(feed[0].id).toBe("story-2");
   });
@@ -351,9 +351,10 @@ describe("Feed Query Separation (Story #51+ beyond global Top 50)", () => {
 
     const feed = await loadFeed(createMockSupabase(db), "user-1", "all");
 
-    // stories 41-60 are recent (scores 60..41); the topic cap keeps 15 of them,
-    // which is enough, so older high scorers stay off the front page
-    expect(feed).toHaveLength(15);
+    // stories 41-60 are recent (scores 60..41); the topic cap keeps 5 of them.
+    // That is thin, but the all-time fallback is the same topic, so the older
+    // high scorers cannot displace the recent ones
+    expect(feed).toHaveLength(5);
     expect(feed[0].id).toBe("story-41");
     expect(feed.every((item) => Number(item.id.split("-")[1]) > 40)).toBe(true);
   });

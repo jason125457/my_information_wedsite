@@ -105,8 +105,27 @@ function createMockSupabase(initialState?: Partial<MockDatabaseState>) {
                 const data = state.rawItems.filter((r) => set.has(r.external_id));
                 return Promise.resolve({ data, error: null });
               }
+              if (tableName === "raw_items" && col === "id") {
+                const set = new Set(values);
+                const data = state.rawItems.filter((r) => set.has(r.id));
+                return Promise.resolve({ data, error: null });
+              }
+              if (tableName === "story_sources" && col === "story_id") {
+                const set = new Set(values);
+                const data = state.storySources.filter((s) => set.has(s.story_id));
+                return Promise.resolve({ data, error: null });
+              }
               return Promise.resolve({ data: [], error: null });
             },
+            gte: (col: string, val: string) => ({
+              limit: () => {
+                if (tableName === "stories" && col === "created_at") {
+                  const data = state.stories.filter((s) => s.created_at >= val);
+                  return Promise.resolve({ data, error: null });
+                }
+                return Promise.resolve({ data: [], error: null });
+              },
+            }),
             then: (onfulfilled: (res: { data: unknown; error: null }) => unknown) => {
               if (tableName === "topics") {
                 return Promise.resolve(onfulfilled({ data: state.topics, error: null }));
@@ -522,5 +541,47 @@ describe("Existing feed ids with a changed URL", () => {
     expect(result.status).toBe("succeeded");
     expect(result.totals.duplicates).toBe(1);
     expect(mockSupabase.state.rawItems).toHaveLength(1);
+  });
+});
+
+describe("Cross-run deduplication", () => {
+  it("links a later report of the same event to the existing story instead of creating a card", async () => {
+    const feedFor = (guid: string, link: string) => `
+      <rss version="2.0"><channel><item>
+        <guid>${guid}</guid>
+        <title>New AI Model Released Today</title>
+        <link>${link}</link>
+        <description>Exciting new intelligence updates.</description>
+        <pubDate>${new Date().toUTCString()}</pubDate>
+      </item></channel></rss>`;
+    const mockSupabase = createMockSupabase();
+    const editor = createMockEditor();
+    const run = (xml: string) =>
+      ingestSources({
+        supabase: mockSupabase as unknown as IngestOptions["supabase"],
+        editor,
+        fetchImplementation: vi.fn(async () => new Response(xml, { status: 200 })) as typeof fetch,
+      });
+
+    const first = await run(feedFor("article-101", "https://example.com/posts/article-101"));
+    expect(first.totals.storiesCreated).toBe(1);
+
+    const second = await run(feedFor("article-202", "https://example.com/posts/article-202-update"));
+
+    expect(second.totals.storiesCreated).toBe(0);
+    expect(second.totals.attached).toBe(1);
+    expect(second.sources[0]!.attachedCount).toBe(1);
+    expect(mockSupabase.state.stories).toHaveLength(1);
+    expect(mockSupabase.state.rawItems).toHaveLength(2);
+
+    const storyId = mockSupabase.state.stories[0]!.id;
+    const links = mockSupabase.state.storySources.filter((link) => link.story_id === storyId);
+    expect(links).toHaveLength(2);
+    expect(links.filter((link) => link.is_primary)).toHaveLength(1);
+    const attachedRaw = mockSupabase.state.rawItems.find((r) => r.external_id === "article-202");
+    expect(links.find((link) => link.raw_item_id === attachedRaw!.id)?.is_primary).toBe(false);
+
+    const job = mockSupabase.state.jobRuns.at(-1)!;
+    expect(job.metadata).toMatchObject({ totals: { attached: 1, storiesCreated: 0 } });
   });
 });
