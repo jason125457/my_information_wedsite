@@ -2,6 +2,12 @@ import "server-only";
 
 import type { createClient } from "@/lib/supabase/server";
 import type { Database, Json } from "@/lib/supabase/database.types";
+import {
+  evaluateSourceHealth,
+  type HealthRun,
+  type HealthSourceRun,
+  type SourceHealthIssue,
+} from "@/lib/jobs/source-health";
 
 type JobRow = Database["public"]["Tables"]["job_runs"]["Row"];
 type ServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -33,6 +39,44 @@ export async function loadRecentJobs(supabase: ServerClient, limit = 30): Promis
 
   if (error) throw new Error(`Unable to load job history: ${error.message}`);
   return (data ?? []).map(summarizeJob);
+}
+
+const HEALTH_WINDOW_DAYS = 16;
+
+/** Sources with repeated failures or no inserted story for 14 days, from recent ingestion runs. */
+export async function loadSourceHealth(supabase: ServerClient, now = new Date()): Promise<SourceHealthIssue[]> {
+  const since = new Date(now.getTime() - HEALTH_WINDOW_DAYS * 86_400_000).toISOString();
+  const { data, error } = await supabase
+    .from("job_runs")
+    .select("started_at,metadata")
+    .eq("job_type", "ingestion")
+    .gte("started_at", since)
+    .order("started_at", { ascending: false })
+    .limit(500);
+
+  if (error) throw new Error(`Unable to load source health: ${error.message}`);
+  const runs: HealthRun[] = (data ?? []).map((row) => ({
+    startedAt: row.started_at,
+    sources: healthSourcesFromMetadata(row.metadata),
+  }));
+  return evaluateSourceHealth(runs, now);
+}
+
+function healthSourcesFromMetadata(metadata: Json | undefined): HealthSourceRun[] {
+  const record = asRecord(metadata);
+  if (!Array.isArray(record?.sources)) return [];
+  return record.sources.flatMap((value): HealthSourceRun[] => {
+    const source = asRecord(value);
+    if (!source || typeof source.sourceName !== "string") return [];
+    return [{
+      sourceId: typeof source.sourceId === "string" ? source.sourceId : undefined,
+      name: source.sourceName,
+      type: typeof source.sourceType === "string" ? source.sourceType : undefined,
+      fetched: nonNegativeNumber(source.fetchedCount),
+      inserted: nonNegativeNumber(source.insertedCount),
+      error: typeof source.error === "string" && source.error ? source.error : null,
+    }];
+  });
 }
 
 export function summarizeJob(row: JobRow): JobSummary {

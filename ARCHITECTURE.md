@@ -125,6 +125,11 @@ interface Collector {
 - **Hacker News Show HN**（`list: showstories`）：使用者分享的新工具。
 - YouTube 頻道 feed 自 2026-10 起間歇回應 404／500，KEXP 已停用，改用 Gorilla vs. Bear。
 
+### 來源健康與 Discovery 標記（2026-11-15）
+
+- `is_discovery` 只給「值得探索」的來源（Bandcamp Daily、Reddit 社群、Google 新聞地點搜尋、Gorilla vs. Bear、Show HN）；因為 discovery 來源會跳過 72 小時過期過濾，例行新聞 feed（Pitchfork News、Stereogum、PetaPixel、DPReview、Apple Newsroom）已改為 false。DPReview URL 改為 `https://www.dpreview.com/feed/`（舊網址 301 轉址）。
+- `/settings/jobs` 的「來源健康警示」由最近 16 天 ingestion 的 `job_runs.metadata.sources` 計算（`lib/jobs/source-health.ts`，不新增資料表）：連續失敗 ≥ 3 次，或觀察滿 14 天仍無入選 story。`fetchedCount = 0` 且無 error 的執行（例如沒輪到的 Reddit 來源）視為略過，不算失敗也不算沒內容。
+
 ### Gemini Google Search grounding（未來選項）
 
 用於 Discovery，包括新 AI 工具、樂團、攝影景點、文章與潛在優質來源。
@@ -312,7 +317,7 @@ MVP 使用 rule-based feedback 加 LLM ranking。Save 增加相似內容權重�
 | `/history` | 閱讀紀錄 |
 | `/weekly` | Weekly Review |
 | `/settings` | Topic、通知、來源與 Digest 設定 |
-| `/settings/jobs` | 最近 jobs、處理數與錯誤 |
+| `/settings/jobs` | 最近 jobs、處理數與錯誤、來源健康警示 |
 
 Feed 不使用 infinite scroll，採 Load More 或分頁。
 
