@@ -30,6 +30,26 @@ export interface StoryDraft extends RankedCandidate {
   articleText?: string | null;
 }
 
+/**
+ * A story persisted by an earlier run, represented by its primary source's
+ * original-language raw item (story titles are Chinese, candidates are not).
+ */
+export interface ExistingStory {
+  storyId: string;
+  candidate: NormalizedCandidate;
+}
+
+/** New candidates that belong to a story an earlier run already created. */
+export interface StoryAttachment {
+  storyId: string;
+  candidates: NormalizedCandidate[];
+}
+
+/** Per-run caps: about 12 runs a day keeps the feed near 20–30 new stories. */
+export const DEFAULT_MAX_STORIES = 3;
+export const DEFAULT_MAX_PER_TOPIC = 2;
+export const DEFAULT_MAX_PER_SOURCE = 1;
+
 export interface ProcessingFailure {
   sourceId: string;
   externalId: string | null;
@@ -39,6 +59,8 @@ export interface ProcessingFailure {
 
 export interface ProcessingResult {
   stories: StoryDraft[];
+  /** Candidates merged into existing stories; never summarized or re-created. */
+  attachments: StoryAttachment[];
   prefilterRejected: PrefilterRejection[];
   belowThresholdCount: number;
   failures: ProcessingFailure[];
@@ -65,6 +87,12 @@ export interface ProcessingOptions {
    * the whole article. Omitted in tests; null means "use the feed excerpt".
    */
   fetchArticleText?: (url: string) => Promise<string | null>;
+  /**
+   * Stories from recent runs. Candidates about the same event join them as
+   * extra sources instead of becoming a second card. They do not use any of
+   * this run's maxStories / maxPerTopic / maxPerSource room.
+   */
+  existingStories?: ExistingStory[];
 }
 
 export async function processCandidates(
@@ -76,9 +104,9 @@ export async function processCandidates(
   const minimumScore = clamp(options.minimumScore ?? 60, 0, 100);
   const classificationBatchSize = clampInteger(options.classificationBatchSize ?? 40, 1, 50);
   const summaryBatchSize = clampInteger(options.summaryBatchSize ?? 8, 1, 20);
-  const maxStories = clampInteger(options.maxStories ?? 10, 1, 200);
-  const maxPerTopic = clampInteger(options.maxPerTopic ?? 3, 1, 200);
-  const maxPerSource = clampInteger(options.maxPerSource ?? 2, 1, 200);
+  const maxStories = clampInteger(options.maxStories ?? DEFAULT_MAX_STORIES, 1, 200);
+  const maxPerTopic = clampInteger(options.maxPerTopic ?? DEFAULT_MAX_PER_TOPIC, 1, 200);
+  const maxPerSource = clampInteger(options.maxPerSource ?? DEFAULT_MAX_PER_SOURCE, 1, 200);
   const now = options.now ?? new Date();
 
   const prefiltered = prefilterCandidates(candidates.slice(0, maximum), now);
@@ -119,9 +147,15 @@ export async function processCandidates(
   const aboveThreshold = ranked
     .filter((item) => item.ranking.finalScore >= minimumScore)
     .sort((first, second) => second.ranking.finalScore - first.ranking.finalScore);
-  // Walk candidates best-first. Each either joins an already selected story as
-  // another source, or becomes a new story while the run and its topic still
-  // have room. Strong candidates beyond the caps are evaluated but not kept.
+  // Walk candidates best-first. Each either joins a story from an earlier run,
+  // joins a story selected in this run as another source, or becomes a new
+  // story while the run, its topic and its source still have room. Strong
+  // candidates beyond the caps are evaluated but not kept.
+  const existing = (options.existingStories ?? []).map((story) => ({
+    storyId: story.storyId,
+    candidate: story.candidate,
+    attached: [] as NormalizedCandidate[],
+  }));
   const groups: Array<
     RankedCandidate & { additionalSources: NormalizedCandidate[]; articleText?: string | null }
   > = [];
@@ -135,11 +169,16 @@ export async function processCandidates(
       groups.length < maxStories &&
       (perTopic.get(topic) ?? 0) < maxPerTopic &&
       (perSource.get(source) ?? 0) < maxPerSource;
+    // Earlier runs' stories first: the event already has a card.
+    const target = [
+      ...existing.map((group) => ({ candidate: group.candidate, sources: group.attached })),
+      ...groups.map((group) => ({ candidate: group.candidate, sources: group.additionalSources })),
+    ];
     let matched = false;
-    for (const group of groups) {
+    for (const group of target) {
       const comparison = compareCandidates(group.candidate, item.candidate);
       if (comparison.match === "exact" || comparison.match === "likely") {
-        group.additionalSources.push(item.candidate);
+        group.sources.push(item.candidate);
         matched = true;
         break;
       }
@@ -148,7 +187,7 @@ export async function processCandidates(
         try {
           const decision = await editor.decideDuplicate(group.candidate, item.candidate);
           if (decision.same_event) {
-            group.additionalSources.push(item.candidate);
+            group.sources.push(item.candidate);
             matched = true;
             break;
           }
@@ -214,6 +253,9 @@ export async function processCandidates(
 
   return {
     stories,
+    attachments: existing
+      .filter((group) => group.attached.length > 0)
+      .map((group) => ({ storyId: group.storyId, candidates: group.attached })),
     prefilterRejected: prefiltered.rejected,
     belowThresholdCount: ranked.length - aboveThreshold.length,
     failures,

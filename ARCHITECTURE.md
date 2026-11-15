@@ -70,9 +70,19 @@ MVP 不建立獨立 backend service。
   - **程式計算**：`content_type`（來源設定）、`fact_status`（來源可靠度）、`freshness`（發布時間衰減）、`discussion_popularity`（Hacker News 分數／留言，無資料為中性 3）。見 `lib/pipeline/signals.ts`。
   - **AI 只判斷**：主題、`interest_relevance`、`information_value`、`importance`、`discovery_value`，並要求嚴格使用 1–5 全範圍。分類批次提高到 40 則。
   - **關鍵字預過濾**：促銷、贈獎、贊助內容在 AI 之前丟棄（`lib/pipeline/prefilter.ts`）。
-  - **每輪配額**：每輪最多 10 則、每個主題最多 3 則、每個來源最多 2 則（`maxStories`／`maxPerTopic`／`maxPerSource`）；品質下限 `final_score >= 60`。超出配額的候選已評估、不再重試。
+  - **每輪配額**：每輪最多 10 則、每個主題最多 3 則、每個來源最多 2 則（`maxStories`／`maxPerTopic`／`maxPerSource`）；品質下限 `final_score >= 60`。超出配額的候選已評估、不再重試。（2026-11-15 已下修，見下方「每日產量與跨批次合併」。）
   - **中文標題檢查**：摘要標題不含中文字時，該則重新摘要一次；仍失敗則保留原結果。
   - **每日精選**：單一主題最多佔 25%。
+
+### 每日產量與跨批次合併（2026-11-15 決策）
+
+實測一天新增 91～120 則 Story（每輪上限 10 則 × 一天 12 輪），而 `final_score` 第 10／50／90 百分位為 74／88／100，`>= 60` 的門檻幾乎擋不掉任何東西：LLM 給的絕對分數沒有校準，不能拿來控制數量。另外事件去重只在同一輪內進行，同一事件會在不同輪各出一張卡。改為：
+
+- **每輪上限**（`lib/pipeline/process.ts` 的 `DEFAULT_MAX_STORIES`／`DEFAULT_MAX_PER_TOPIC`／`DEFAULT_MAX_PER_SOURCE`，`ingest.ts` 明確傳入）：每輪最多 **3** 則新 Story、每個主題最多 **2** 則、每個來源最多 **1** 則。一天 12 輪的理論上限 36 則，扣掉空輪與跨批次合併，預期每天約 20～30 則。數量由這些相對上限（每輪取最好的幾則）控制；`minimumScore` 只保留為安全底線，不再當作數量控制。
+- **跨批次合併**：`ingest.ts` 在呼叫 `processCandidates` 之前，載入近 72 小時建立的 Story 及其主要來源（`story_sources.is_primary = true` → `raw_items` 的原文標題、canonical URL、source／external id、發布時間）。Story 標題是中文、候選是原文，所以比對一律用主要來源的原文標題。這些 Story 以 `existingStories` 傳入，在排序後的分組迴圈中**先於本輪新群組**比對：`compareCandidates` 判定 exact／likely 就併入；ambiguous 且本輪還有名額、AI 額度未用完時，沿用 `decideDuplicate`（只有這種情況會多一次 Gemini 呼叫）。
+- 既有 Story **不佔**本輪的 maxStories／maxPerTopic／maxPerSource 名額，也**不會**重新摘要或建立新 Story。併入結果以 `ProcessingResult.attachments`（`{ storyId, candidates }`）回傳，`ingest.ts` 只做兩件事：upsert `raw_items`，再 upsert `story_sources`（`is_primary = false`）。卡片上的來源數因此增加。
+- 併入數量記在 job 統計：每個來源的 `attachedCount` 與 `totals.attached`，可在 `job_runs.metadata` 看到。載入既有 Story 失敗只會停用該輪的跨批次合併，不會讓 ingestion 失敗。
+- 首頁（`lib/feed/front-page.ts`）改為**過去 24 小時依 `final_score` 排名的前 20 則**，單一主題最多 1/4（5 則）；24 小時內少於 12 則時，以歷來高分 Story 往後補足。
 
 Discovery 搜尋結果必須保存 URL、Title、Source 與 citation metadata，UI 必須顯示清楚且可點擊的原始來源。
 
@@ -194,7 +204,7 @@ MVP 使用 rule-based feedback 加 LLM ranking。Save 增加相似內容權重�
 
 每個 Story 產生繁體中文 title、3～5 句 summary、3～5 條 `key_points`（數字、人名、原因、影響等細節，讓使用者不必點開原文）與 1 句 `why_recommended`。摘要不得創造來源不存在的資訊，不得把 Reddit 推測寫成已確認事實，也不得隱藏來源性質。
 
-**原文全文（2026-11-12 決策）**：RSS excerpt 通常只有一兩句，不足以寫出重點。因此在排名與上限篩選**之後**，只針對入選的 Story（每輪最多 10 則）以 `lib/article/extract.ts` 抓取原文頁面，擷取 `<article>`／`<main>` 內的段落（上限 6,000 字元）送進摘要請求，用完即丟、不寫入資料庫。抓不到（403、需要 JavaScript、付費牆、Google News 轉址、Reddit）就退回 feed excerpt，此時 AI 會寫較少重點而不是編造。不繞過付費牆或反爬蟲機制。
+**原文全文（2026-11-12 決策）**：RSS excerpt 通常只有一兩句，不足以寫出重點。因此在排名與上限篩選**之後**，只針對入選的 Story（每輪最多 3 則）以 `lib/article/extract.ts` 抓取原文頁面，擷取 `<article>`／`<main>` 內的段落（上限 6,000 字元）送進摘要請求，用完即丟、不寫入資料庫。抓不到（403、需要 JavaScript、付費牆、Google News 轉址、Reddit）就退回 feed excerpt，此時 AI 會寫較少重點而不是編造。不繞過付費牆或反爬蟲機制。
 
 ## 10. Core Database Schema
 
@@ -323,7 +333,7 @@ Feed 不使用 infinite scroll，採 Load More 或分頁。
 - 字體：Newsreader＋Noto Serif TC（標題）、Noto Sans TC（內文），由 Google Fonts 以 unicode-range 分片載入。
 - 每個主題固定一個顏色（`data-topic` → `--topic`），用於標籤與無圖時的漸層佔位圖。
 - 首頁：報紙式刊頭、頭條大圖＋「同場加映」、三欄圖片卡片、深色「探索」帶（音樂／攝影）；「再看 N 則」取代無限捲動。
-- 首頁內容為近 72 小時、依分數排序，單一主題最多佔 1/4。
+- 首頁內容為近 24 小時、依分數排序的前 20 則，單一主題最多佔 1/4；不足 12 則時以歷來高分補足。
 
 ## 12. Route Handlers and Server Actions
 

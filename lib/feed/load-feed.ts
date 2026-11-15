@@ -1,30 +1,16 @@
 import "server-only";
 
+import {
+  balanceTopics,
+  FRONT_PAGE_MINIMUM,
+  FRONT_PAGE_POOL,
+  FRONT_PAGE_WINDOW_HOURS,
+  selectFrontPage,
+} from "@/lib/feed/front-page";
 import type { FeedStory, TopicSlug } from "@/lib/feed/types";
 import type { createClient } from "@/lib/supabase/server";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
-
-const FRONT_PAGE_WINDOW_HOURS = 72;
-const FRONT_PAGE_LIMIT = 60;
-const FRONT_PAGE_MINIMUM = 12;
-const FRONT_PAGE_POOL = 300;
-const FRONT_PAGE_TOPIC_SHARE = 0.25;
-
-/** Keeps score order but stops adding a topic once it fills its share. */
-function balanceTopics<T extends { id: string; primary_topic_id: string }>(rows: T[]): T[] {
-  const cap = Math.ceil(FRONT_PAGE_LIMIT * FRONT_PAGE_TOPIC_SHARE);
-  const perTopic = new Map<string, number>();
-  const picked: T[] = [];
-  for (const row of rows) {
-    if (picked.length >= FRONT_PAGE_LIMIT) break;
-    const count = perTopic.get(row.primary_topic_id) ?? 0;
-    if (count >= cap) continue;
-    perTopic.set(row.primary_topic_id, count + 1);
-    picked.push(row);
-  }
-  return picked;
-}
 
 const topicLabels: Record<FeedStory["topic"], string> = {
   ai: "AI",
@@ -207,10 +193,10 @@ export async function loadFeed(
     return loadStoriesByIds(supabase, profileId, stateRows.map((r) => r.story_id));
   }
 
-  // view === "all": the best of the last few days, so the front page turns
-  // over instead of being held by old high scorers, with no topic taking more
-  // than a quarter of the page. Falls back to the all-time best when the
-  // window is thin (e.g. right after setup).
+  // view === "all": the top 20 of the last 24 hours by final_score, so the
+  // front page turns over daily instead of being held by old high scorers,
+  // with no topic taking more than a quarter of the page. Falls back to the
+  // all-time best when the window is thin (e.g. right after setup).
   const since = new Date(Date.now() - FRONT_PAGE_WINDOW_HOURS * 3_600_000).toISOString();
   const recent = await supabase
     .from("stories")
@@ -220,17 +206,18 @@ export async function loadFeed(
     .limit(FRONT_PAGE_POOL);
   if (recent.error) throw new Error(`Unable to load stories: ${recent.error.message}`);
 
-  let storyRows = balanceTopics(recent.data ?? []);
-  if (storyRows.length < FRONT_PAGE_MINIMUM) {
+  const recentRows = recent.data ?? [];
+  let fallbackRows: typeof recentRows = [];
+  if (balanceTopics(recentRows).length < FRONT_PAGE_MINIMUM) {
     const best = await supabase
       .from("stories")
       .select("id,primary_topic_id")
       .order("final_score", { ascending: false })
       .limit(FRONT_PAGE_POOL);
     if (best.error) throw new Error(`Unable to load stories: ${best.error.message}`);
-    const seen = new Set(storyRows.map((row) => row.id));
-    storyRows = balanceTopics([...storyRows, ...(best.data ?? []).filter((row) => !seen.has(row.id))]);
+    fallbackRows = best.data ?? [];
   }
+  const storyRows = selectFrontPage(recentRows, fallbackRows);
   if (!storyRows.length) return [];
 
   const stories = await loadStoriesByIds(
