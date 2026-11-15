@@ -194,12 +194,16 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
 
     // 3. Prepare collectors with failure isolation
     const collectorsToRun: Collector[] = [];
+    // Sources this run actually tried. A Reddit source that was not this run's
+    // turn is not attempted, so it can never count as a failure.
+    const attemptedSourceIds = new Set<string>();
     for (const source of sources) {
       const topic = (source.primary_topic_id ? topicMap.get(source.primary_topic_id) : null) ?? "technology";
       try {
         const collector = createCollectorFromSource(source, topic, options.fetchImplementation);
         collectorsToRun.push(collector);
       } catch (err) {
+        attemptedSourceIds.add(source.id);
         const stat = statsBySource.get(source.id);
         if (stat) {
           stat.error = err instanceof Error ? err.message : "Collector initialization failed.";
@@ -217,10 +221,12 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     const redditThisRun = redditCollectors.length
       ? [redditCollectors[redditSlot(now) % redditCollectors.length]]
       : [];
-    const collectorResults = await runCollectors([
+    const collectorsThisRun = [
       ...collectorsToRun.filter((c) => c.sourceType !== "reddit"),
       ...redditThisRun,
-    ]);
+    ];
+    for (const collector of collectorsThisRun) attemptedSourceIds.add(collector.sourceId);
+    const collectorResults = await runCollectors(collectorsThisRun);
     const allCandidates: NormalizedCandidate[] = [];
 
     for (const result of collectorResults) {
@@ -320,14 +326,9 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     // If all candidates are duplicates or filtered out, end early without calling AI
     if (candidatesToProcess.length === 0) {
       const totals = computeTotals(statsBySource, 0);
-      const hasErrors = Array.from(statsBySource.values()).some((s) => s.error !== null);
-      const status = hasErrors
-        ? collectorsToRun.length === 0
-          ? "failed"
-          : "partial"
-        : "succeeded";
+      const { status, errorMessage } = resolveIngestionStatus(statsBySource, attemptedSourceIds);
 
-      await finishJobRun(supabase, job.id, status, 0, statsBySource, totals, startTime);
+      await finishJobRun(supabase, job.id, status, 0, statsBySource, totals, startTime, errorMessage);
       return {
         jobId: job.id,
         status,
@@ -335,6 +336,7 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
         sources: Array.from(statsBySource.values()),
         totals,
         durationMs: Date.now() - startTime,
+        ...(errorMessage ? { warning: errorMessage } : {}),
       };
     }
 
@@ -496,7 +498,6 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
 
     // 8c. Candidates about an event that already has a card become extra
     // sources of that story. No new story, no new summary.
-    let totalAttached = 0;
     for (const attachment of processingResult.attachments) {
       const links = attachment.candidates.flatMap((candidate) => {
         const rawItemId = rawItemsMap.get(candidate.canonicalUrl);
@@ -517,7 +518,6 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
         continue;
       }
       for (const { candidate } of links) {
-        totalAttached += 1;
         const stat = statsBySource.get(candidate.sourceId);
         if (stat) stat.attachedCount += 1;
       }
@@ -525,14 +525,19 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
 
     // 9. Finalize job_runs record
     const totals = computeTotals(statsBySource, totalStoriesCreated);
-    const hasSourceErrors = Array.from(statsBySource.values()).some((s) => s.error !== null);
-    const status = hasSourceErrors
-      ? totalStoriesCreated + totalAttached > 0
-        ? "partial"
-        : "failed"
-      : "succeeded";
+    const { status, errorMessage } = resolveIngestionStatus(statsBySource, attemptedSourceIds);
 
-    await finishJobRun(supabase, job.id, status, totalStoriesCreated, statsBySource, totals, startTime);
+    await finishJobRun(
+      supabase,
+      job.id,
+      status,
+      totalStoriesCreated,
+      statsBySource,
+      totals,
+      startTime,
+      errorMessage,
+      { suspectedGarbledCount: processingResult.suspectedGarbledCount },
+    );
 
     return {
       jobId: job.id,
@@ -541,6 +546,7 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
       sources: Array.from(statsBySource.values()),
       totals,
       durationMs: Date.now() - startTime,
+      ...(errorMessage ? { warning: errorMessage } : {}),
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Ingestion job failed.";
@@ -548,6 +554,37 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     await finishJobRun(supabase, job.id, "failed", 0, statsBySource, totals, startTime, errorMessage);
     throw error;
   }
+}
+
+const ERROR_DETAIL_LIMIT = 100;
+const ERROR_MESSAGE_LIMIT = 600;
+
+/**
+ * Job status from per-source outcomes:
+ *  - every attempted source failed → failed
+ *  - some failed → partial (whether or not new stories came out)
+ *  - none failed → succeeded, even with 0 new stories
+ * Sources not attempted this run (e.g. Reddit sources off-rotation) are not
+ * failures. `errorMessage` names the failed sources and why.
+ */
+export function resolveIngestionStatus(
+  statsBySource: Map<string, SourceIngestStats>,
+  attemptedSourceIds: Set<string>,
+): { status: "succeeded" | "partial" | "failed"; errorMessage?: string } {
+  const failed = Array.from(statsBySource.values()).filter((stat) => stat.error !== null);
+  if (failed.length === 0) return { status: "succeeded" };
+
+  const attempted = Math.max(attemptedSourceIds.size, failed.length);
+  const details = failed
+    .map((stat) => `${stat.sourceName} (${truncate(stat.error ?? "", ERROR_DETAIL_LIMIT)})`)
+    .join("; ");
+  const errorMessage = truncate(`${failed.length}/${attempted} sources failed: ${details}`, ERROR_MESSAGE_LIMIT);
+  return { status: failed.length >= attempted ? "failed" : "partial", errorMessage };
+}
+
+function truncate(text: string, limit: number) {
+  const clean = text.replace(/\s+/g, " ").trim();
+  return clean.length > limit ? `${clean.slice(0, limit - 1)}…` : clean;
 }
 
 export function createCollectorFromSource(
@@ -815,6 +852,7 @@ async function finishJobRun(
   totals: IngestionJobTotals,
   startTime: number,
   errorMessage?: string,
+  extraMetadata: Record<string, number> = {},
 ) {
   const durationMs = Date.now() - startTime;
   await supabase
@@ -828,6 +866,7 @@ async function finishJobRun(
         sources: Array.from(statsBySource.values()),
         totals,
         durationMs,
+        ...extraMetadata,
       } as unknown as Json,
     })
     .eq("id", jobId);

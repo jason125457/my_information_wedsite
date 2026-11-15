@@ -5,7 +5,9 @@ import type { Classification, StorySummary } from "@/lib/ai/schemas";
 import {
   createCollectorFromSource,
   ingestSources,
+  resolveIngestionStatus,
   type IngestOptions,
+  type SourceIngestStats,
 } from "@/lib/pipeline/ingest";
 import type { Database } from "@/lib/supabase/database.types";
 import { createBatchProvider } from "./helpers/batch-provider";
@@ -583,5 +585,146 @@ describe("Cross-run deduplication", () => {
 
     const job = mockSupabase.state.jobRuns.at(-1)!;
     expect(job.metadata).toMatchObject({ totals: { attached: 1, storiesCreated: 0 } });
+  });
+});
+
+function emptyFeed() {
+  return `<?xml version="1.0"?><rss version="2.0"><channel><title>Empty</title></channel></rss>`;
+}
+
+function rssSource(id: string, name: string, host: string): SourceRow {
+  return {
+    id,
+    name,
+    type: "rss",
+    url: `https://${host}/rss.xml`,
+    reliability_type: "community",
+    primary_topic_id: "topic-tech",
+    is_discovery: false,
+    is_active: true,
+    config: {},
+    created_at: new Date().toISOString(),
+  };
+}
+
+describe("Ingestion job status", () => {
+  async function runWith(sources: SourceRow[], failingHosts: Record<string, string>) {
+    const mockFetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      for (const [host, message] of Object.entries(failingHosts)) {
+        if (url.includes(host)) throw new Error(message);
+      }
+      return new Response(emptyFeed(), { status: 200, headers: { "Content-Type": "application/xml" } });
+    });
+    const mockSupabase = createMockSupabase({ sources });
+    const result = await ingestSources({
+      supabase: mockSupabase as unknown as IngestOptions["supabase"],
+      editor: createMockEditor(),
+      fetchImplementation: mockFetch as typeof fetch,
+    });
+    return { result, jobRun: mockSupabase.state.jobRuns[0] };
+  }
+
+  const sources = [
+    rssSource("s1", "The Verge", "verge.test"),
+    rssSource("s2", "Ars Technica", "ars.test"),
+    rssSource("s3", "Hacker Feed", "hn.test"),
+  ];
+
+  it("is succeeded when no source fails, even with zero new stories", async () => {
+    const { result, jobRun } = await runWith(sources, {});
+    expect(result.status).toBe("succeeded");
+    expect(jobRun.status).toBe("succeeded");
+    expect(jobRun.error_message).toBeNull();
+  });
+
+  it("is partial when one source fails and the batch produced no stories", async () => {
+    const { result, jobRun } = await runWith(sources, { "verge.test": "fetch failed" });
+    expect(result.status).toBe("partial");
+    expect(jobRun.status).toBe("partial");
+    expect(jobRun.error_message).toBe("1/3 sources failed: The Verge (fetch failed)");
+  });
+
+  it("is failed when every attempted source fails, naming each one", async () => {
+    const { result, jobRun } = await runWith(sources, {
+      "verge.test": "fetch failed",
+      "ars.test": "HTTP 503",
+      "hn.test": "timeout",
+    });
+    expect(result.status).toBe("failed");
+    expect(jobRun.status).toBe("failed");
+    expect(jobRun.error_message).toBe(
+      "3/3 sources failed: The Verge (fetch failed); Ars Technica (HTTP 503); Hacker Feed (timeout)",
+    );
+  });
+
+  it("does not count Reddit sources that were not this run's turn as failures", async () => {
+    const reddit = (id: string, subreddit: string): SourceRow => ({
+      ...rssSource(id, `r/${subreddit}`, "www.reddit.com"),
+      type: "reddit",
+      config: { subreddit },
+    });
+    // Only one Reddit source is fetched per run; the other one is skipped, so
+    // with the fetched one failing and a normal source working this is 1/2.
+    const { result } = await runWith(
+      [rssSource("s1", "The Verge", "verge.test"), reddit("r1", "alpha"), reddit("r2", "beta")],
+      { "reddit.com": "HTTP 429" },
+    );
+    expect(result.status).toBe("partial");
+    expect(result.totals.failures).toBe(1);
+  });
+
+  it("marks the job failed with the error message when the run throws", async () => {
+    const mockSupabase = createMockSupabase({ sources: [rssSource("s1", "The Verge", "verge.test")] });
+    const original = mockSupabase.from.bind(mockSupabase);
+    (mockSupabase as unknown as { from: (t: string) => unknown }).from = (table: string) => {
+      if (table === "raw_items") throw new Error("database exploded");
+      return original(table as never);
+    };
+    const feed = `<?xml version="1.0"?><rss version="2.0"><channel><title>x</title><item><title>AI news today</title><link>https://verge.test/a</link><guid>a</guid><pubDate>${new Date().toUTCString()}</pubDate></item></channel></rss>`;
+    await expect(
+      ingestSources({
+        supabase: mockSupabase as unknown as IngestOptions["supabase"],
+        editor: createMockEditor(),
+        fetchImplementation: (async () => new Response(feed, { status: 200 })) as typeof fetch,
+      }),
+    ).rejects.toThrow("database exploded");
+    expect(mockSupabase.state.jobRuns[0].status).toBe("failed");
+    expect(mockSupabase.state.jobRuns[0].error_message).toBe("database exploded");
+  });
+});
+
+describe("resolveIngestionStatus", () => {
+  const stat = (id: string, error: string | null): SourceIngestStats => ({
+    sourceId: id,
+    sourceName: `Source ${id}`,
+    sourceType: "rss",
+    fetchedCount: 0,
+    filteredCount: 0,
+    processedCount: 0,
+    insertedCount: 0,
+    duplicateCount: 0,
+    attachedCount: 0,
+    error,
+  });
+
+  it("only counts attempted sources and truncates long errors", () => {
+    const stats = new Map([
+      ["a", stat("a", "x".repeat(500))],
+      ["b", stat("b", null)],
+      ["c", stat("c", null)], // not attempted this run
+    ]);
+    const { status, errorMessage } = resolveIngestionStatus(stats, new Set(["a", "b"]));
+    expect(status).toBe("partial");
+    expect(errorMessage?.startsWith("1/2 sources failed: Source a (xxx")).toBe(true);
+    expect(errorMessage!.length).toBeLessThan(200);
+  });
+
+  it("is failed when the only attempted source failed", () => {
+    const stats = new Map([
+      ["a", stat("a", "boom")],
+      ["c", stat("c", null)], // off-rotation Reddit source
+    ]);
+    expect(resolveIngestionStatus(stats, new Set(["a"])).status).toBe("failed");
   });
 });

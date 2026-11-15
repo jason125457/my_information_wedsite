@@ -244,6 +244,72 @@ describe("untranslated titles", () => {
   });
 });
 
+describe("garbled summaries", () => {
+  const garbled = "生嫁報導指出黃仁勹婚外情使煌達晶片逅輸中國";
+  const clean = "報導指出黃仁勳婚外情使輝達晶片輸給中國";
+
+  function editorFor(titleFor: (call: number, externalId: string | null) => string) {
+    let calls = 0;
+    const editor = {
+      classifyMany: async (batch: NormalizedCandidate[]) => batch.map(() => judgement),
+      summarizeMany: async (batch: Array<{ candidate: NormalizedCandidate }>) => {
+        calls += 1;
+        return batch.map(({ candidate: item }): StorySummary => ({
+          title: titleFor(calls, item.externalId),
+          summary: "這是第一句。這是第二句。",
+          key_points: [],
+          why_recommended: "理由。",
+        }));
+      },
+      decideDuplicate: vi.fn(async () => ({ same_event: false, confidence: 0.9, reason: "different" })),
+    } as unknown as StoryAIEditor;
+    return { editor, calls: () => calls };
+  }
+
+  const items = [
+    candidate({ externalId: "a", canonicalUrl: "https://a.example/1", url: "https://a.example/1", title: "Nvidia report one" }),
+    candidate({ externalId: "b", canonicalUrl: "https://b.example/2", url: "https://b.example/2", title: "Another distinct headline here", topic: "technology" }),
+  ];
+
+  it("retries only garbled stories once and uses the clean answer", async () => {
+    const batchSizes: number[] = [];
+    const { editor, calls } = editorFor((call, id) => (call === 1 && id === "a" ? garbled : clean));
+    const original = editor.summarizeMany.bind(editor);
+    editor.summarizeMany = (async (batch: Parameters<typeof original>[0]) => {
+      batchSizes.push(batch.length);
+      return original(batch);
+    }) as typeof editor.summarizeMany;
+
+    const result = await processCandidates(items, editor, { now, minimumScore: 0, maxPerSource: 2 });
+
+    expect(calls()).toBe(2);
+    expect(batchSizes).toEqual([2, 1]);
+    expect(result.stories.find((s) => s.candidate.externalId === "a")?.summary.title).toBe(clean);
+    expect(result.suspectedGarbledCount).toBe(0);
+  });
+
+  it("keeps a story that is still garbled after the retry, warns and counts it", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { editor, calls } = editorFor((_call, id) => (id === "a" ? garbled : clean));
+
+    const result = await processCandidates(items, editor, { now, minimumScore: 0, maxPerSource: 2 });
+
+    expect(calls()).toBe(2);
+    expect(result.stories).toHaveLength(2);
+    expect(result.stories.find((s) => s.candidate.externalId === "a")?.summary.title).toBe(garbled);
+    expect(result.suspectedGarbledCount).toBe(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it("makes no extra call when every summary is clean", async () => {
+    const { editor, calls } = editorFor(() => clean);
+    const result = await processCandidates(items, editor, { now, minimumScore: 0, maxPerSource: 2 });
+    expect(calls()).toBe(1);
+    expect(result.suspectedGarbledCount).toBe(0);
+  });
+});
+
 describe("per-run source cap", () => {
   it("lets one source contribute one new story per run by default", async () => {
     const titles = [

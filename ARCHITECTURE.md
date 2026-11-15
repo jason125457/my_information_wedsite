@@ -139,6 +139,9 @@ interface Collector {
 
 - `is_discovery` 只給「值得探索」的來源（Bandcamp Daily、Reddit 社群、Google 新聞地點搜尋、Gorilla vs. Bear、Show HN）；因為 discovery 來源會跳過 72 小時過期過濾，例行新聞 feed（Pitchfork News、Stereogum、PetaPixel、DPReview、Apple Newsroom）已改為 false。DPReview URL 改為 `https://www.dpreview.com/feed/`（舊網址 301 轉址）。
 - `/settings/jobs` 的「來源健康警示」由最近 16 天 ingestion 的 `job_runs.metadata.sources` 計算（`lib/jobs/source-health.ts`，不新增資料表）：連續失敗 ≥ 3 次，或觀察滿 14 天仍無入選 story。`fetchedCount = 0` 且無 error 的執行（例如沒輪到的 Reddit 來源）視為略過，不算失敗也不算沒內容。
+- Job 狀態語意（`resolveIngestionStatus`，「全部重複提前結束」與「正常結束」共用）：本輪實際嘗試的來源（Reddit 沒輪到的不算）全部失敗或發生例外 → `failed`；部分失敗 → `partial`（不論有沒有新 story）；沒有來源失敗 → `succeeded`（0 則新 story 也算成功）。`failed`／`partial` 的 `error_message` 列出失敗來源與錯誤摘要，例如 `2/30 sources failed: The Verge (fetch failed); …`。
+- 亂碼防護（`lib/pipeline/garbled.ts`）：以內建常用字表（Big5 一級字 + GB2312 一級字，約 6,700 字）計算字表外的 CJK 字元。標題（≥ 8 個中文字）出現 ≥ 1 個字表外字元，或摘要＋推薦理由字表外字元 ≥ 2 個且占 ≥ 3 %，即視為疑似亂碼，與「標題沒有中文」一起只重試一次（只重送這些 story，不增加其他 Gemini 呼叫）。重試後仍可疑就保留、`console.warn`，並把數量記在 `job_runs.metadata.suspectedGarbledCount`。
+- Daily Digest 的 LINE 未設定視為略過：job 為 `succeeded`，`metadata` 記 `lineNotified: false`、`lineSkipped: "not_configured"`；LINE 已設定但推送失敗才是 `partial`。
 
 ### Gemini Google Search grounding（未來選項）
 
