@@ -5,6 +5,7 @@ import type { ContentTopic, NormalizedCandidate } from "@/lib/collectors/types";
 import { compareCandidates } from "@/lib/dedupe";
 import { calculateRanking, type FeedbackSignals, type RankingResult } from "@/lib/ranking";
 import { prefilterCandidates, type PrefilterRejection } from "@/lib/pipeline/prefilter";
+import { looksGarbled } from "@/lib/pipeline/garbled";
 import { completeClassification } from "@/lib/pipeline/signals";
 
 export const defaultTopicWeights: Record<ContentTopic, number> = {
@@ -64,6 +65,8 @@ export interface ProcessingResult {
   prefilterRejected: PrefilterRejection[];
   belowThresholdCount: number;
   failures: ProcessingFailure[];
+  /** Stories whose Chinese text still looks garbled after the one retry. */
+  suspectedGarbledCount: number;
 }
 
 export interface ProcessingOptions {
@@ -236,19 +239,32 @@ export async function processCandidates(
   }
 
   // The model occasionally copies an English headline instead of translating
-  // it. Re-ask once for just those stories; keep the first answer if the retry
-  // fails or is still untranslated, since a story beats no story.
-  const untranslated = stories.filter((story) => !hasChinese(story.summary.title));
-  if (untranslated.length && !quotaError) {
+  // it, or garbles Chinese into look-alike characters. Re-ask once for just
+  // those stories; keep the first answer if the retry fails or is no better,
+  // since a story beats no story. No retry for stories that already read fine.
+  const needsRetry = stories.filter(
+    (story) => !hasChinese(story.summary.title) || summaryLooksGarbled(story.summary),
+  );
+  if (needsRetry.length && !quotaError) {
     try {
-      const retried = await editor.summarizeMany(untranslated);
-      untranslated.forEach((story, index) => {
+      const retried = await editor.summarizeMany(needsRetry);
+      needsRetry.forEach((story, index) => {
         const summary = retried[index];
-        if (summary && hasChinese(summary.title)) story.summary = summary;
+        if (!summary || !hasChinese(summary.title)) return;
+        if (!summaryLooksGarbled(summary) || !hasChinese(story.summary.title)) {
+          story.summary = summary;
+        }
       });
     } catch (error) {
       if (error instanceof GeminiDailyQuotaError) quotaError = error;
     }
+  }
+
+  const suspectedGarbled = stories.filter((story) => summaryLooksGarbled(story.summary));
+  for (const story of suspectedGarbled) {
+    console.warn(
+      `Summary still looks garbled after retry (${story.candidate.sourceName}): ${story.summary.title}`,
+    );
   }
 
   return {
@@ -259,6 +275,7 @@ export async function processCandidates(
     prefilterRejected: prefiltered.rejected,
     belowThresholdCount: ranked.length - aboveThreshold.length,
     failures,
+    suspectedGarbledCount: suspectedGarbled.length,
   };
 }
 
@@ -273,6 +290,10 @@ function failure(
     stage,
     errorMessage: error instanceof Error ? error.message : "Unknown AI processing error.",
   };
+}
+
+function summaryLooksGarbled(summary: StorySummary) {
+  return looksGarbled(summary.title, `${summary.summary} ${summary.why_recommended}`);
 }
 
 function hasChinese(text: string) {

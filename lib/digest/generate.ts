@@ -10,6 +10,8 @@ export interface DailyDigestResult {
   itemCount: number;
   status: "created" | "already_exists";
   lineNotified: boolean;
+  /** Set when LINE is not configured; this is a skip, not a failure. */
+  lineSkipped?: "not_configured";
   warning?: string;
 }
 
@@ -95,6 +97,7 @@ export async function generateDailyDigest(now = new Date()): Promise<DailyDigest
     const topicCounts = await countTopics(supabase, selection);
     let lineNotified = false;
     let warning: string | undefined;
+    let lineSkipped: "not_configured" | undefined;
     if (selection.length && hasLineConfiguration()) {
       try {
         await sendLineDigestNotification({
@@ -110,12 +113,14 @@ export async function generateDailyDigest(now = new Date()): Promise<DailyDigest
         warning = error instanceof Error ? error.message : "LINE notification failed.";
       }
     } else if (selection.length) {
-      warning = "LINE notification is not configured.";
+      // LINE is optional: without credentials the digest is complete as is.
+      lineSkipped = "not_configured";
     }
 
     await finishJob(supabase, job.id, warning ? "partial" : "succeeded", selection.length, {
       digestId: digest.id,
       lineNotified,
+      ...(lineSkipped ? { lineSkipped } : {}),
       warning: warning ?? null,
     });
     return {
@@ -124,6 +129,7 @@ export async function generateDailyDigest(now = new Date()): Promise<DailyDigest
       itemCount: selection.length,
       status: "created",
       lineNotified,
+      ...(lineSkipped ? { lineSkipped } : {}),
       warning,
     };
   } catch (error) {
