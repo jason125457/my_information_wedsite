@@ -160,17 +160,14 @@ A feature is complete when:
 6. Documentation is updated.
 7. The UI remains usable on desktop and mobile.
 
-## First Codex Task
+## Workflow and Verification
 
-Read `PRODUCT.md`, `ARCHITECTURE.md`, and `AGENTS.md`, then:
+This file is the single source of rules for every coding agent (Codex, Claude Code, Antigravity). Tool-specific files such as `CLAUDE.md` only import it and add tool-specific notes. Remaining work is tracked in `IMPLEMENTATION_PLAN.md`.
 
-1. Create a short implementation plan.
-2. Scaffold the Next.js project.
-3. Add Supabase integration.
-4. Add database migrations for the initial data model and RLS.
-5. Build the Feed UI using seeded mock data.
-6. Implement single-user Magic Link authentication restricted by `ALLOWED_EMAIL`.
-7. Add tests for the initial data model and critical access rules.
-8. Update `README.md` with verified local setup instructions.
-
-Do not implement every external source integration in the first task. Complete and verify the first vertical slice before continuing to ingestion.
+- Before every commit run `npm run verify` (lint, typecheck, tests, build). CI runs the same plus a PostgreSQL RLS job (`tests/database/rls.sql`), so a new table or policy needs a matching RLS check there.
+- One branch per change → pull request → merge. Never push straight to `main`: a push to `main` deploys to Cloudflare Workers (`deploy.yml`).
+- Ask the user before anything that touches production: `npm run deploy`, running `job:*` scripts against the production Supabase project, changing GitHub Actions secrets or schedules, sending LINE messages.
+- This repository is public. No secrets, project refs, personal email addresses or real user data in code, docs, tests, fixtures or commit messages.
+- Watch the Gemini free-tier request budget when changing batching.
+- Commits: English Conventional Commits (`feat:`, `fix:`, `chore:`), one behaviour change per PR, title written as the user-visible outcome.
+- Talk to the user in Traditional Chinese; code, commits and these docs stay in English.
