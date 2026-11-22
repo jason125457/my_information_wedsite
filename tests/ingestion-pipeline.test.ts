@@ -585,3 +585,86 @@ describe("Cross-run deduplication", () => {
     expect(job.metadata).toMatchObject({ totals: { attached: 1, storiesCreated: 0 } });
   });
 });
+
+describe("Ingestion job status", () => {
+  const sourceRow = (id: string, name: string, url: string): SourceRow => ({
+    id,
+    name,
+    type: "rss",
+    url,
+    reliability_type: "official",
+    primary_topic_id: "topic-ai",
+    is_discovery: false,
+    is_active: true,
+    config: {},
+    created_at: new Date().toISOString(),
+  });
+
+  it("stays partial, not failed, when one source fails and no story passes the bar", async () => {
+    const mockFetch = vi.fn(async (input: string | URL | Request) => {
+      if (String(input).includes("broken.example.com")) {
+        return new Response("", { status: 404 });
+      }
+      return new Response(mockRssXml, { status: 200, headers: { "Content-Type": "application/xml" } });
+    });
+    const mockSupabase = createMockSupabase({
+      sources: [
+        sourceRow("source-ok", "Working RSS", "https://example.com/rss.xml"),
+        sourceRow("source-broken", "Broken RSS", "https://broken.example.com/rss.xml"),
+      ],
+    });
+
+    // The working feed item is classified as low value, so no story is created.
+    const lowValueEditor = new StoryAIEditor(
+      createBatchProvider({
+        classify: () => ({
+          topics: ["ai"],
+          interest_relevance: 1,
+          information_value: 1,
+          importance: 1,
+          freshness: 1,
+          discussion_popularity: 1,
+          discovery_value: 1,
+          content_type: "current",
+          fact_status: "official_confirmation",
+        }),
+        summarize: () => {
+          throw new Error("A below-threshold item must not be summarized.");
+        },
+      }),
+      { fast: "fast-model", quality: "quality-model" },
+    );
+
+    const result = await ingestSources({
+      supabase: mockSupabase as unknown as IngestOptions["supabase"],
+      editor: lowValueEditor,
+      fetchImplementation: mockFetch as typeof fetch,
+    });
+
+    expect(result.totals.processed).toBe(1);
+    expect(result.itemsProcessed).toBe(0);
+    expect(result.status).toBe("partial");
+    const jobRun = mockSupabase.state.jobRuns[0];
+    expect(jobRun.status).toBe("partial");
+    expect(jobRun.error_message).toContain("1/2 sources failed: Broken RSS");
+  });
+
+  it("is failed when every attempted source fails", async () => {
+    const mockFetch = vi.fn(async () => new Response("", { status: 503 }));
+    const mockSupabase = createMockSupabase({
+      sources: [
+        sourceRow("source-a", "Feed A", "https://a.example.com/rss.xml"),
+        sourceRow("source-b", "Feed B", "https://b.example.com/rss.xml"),
+      ],
+    });
+
+    const result = await ingestSources({
+      supabase: mockSupabase as unknown as IngestOptions["supabase"],
+      editor: createMockEditor(),
+      fetchImplementation: mockFetch as typeof fetch,
+    });
+
+    expect(result.status).toBe("failed");
+    expect(mockSupabase.state.jobRuns[0].error_message).toContain("2/2 sources failed");
+  });
+});

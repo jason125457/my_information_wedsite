@@ -194,12 +194,15 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
 
     // 3. Prepare collectors with failure isolation
     const collectorsToRun: Collector[] = [];
+    // Sources this run actually tried (rotated-out Reddit sources are not).
+    const attemptedSourceIds = new Set<string>();
     for (const source of sources) {
       const topic = (source.primary_topic_id ? topicMap.get(source.primary_topic_id) : null) ?? "technology";
       try {
         const collector = createCollectorFromSource(source, topic, options.fetchImplementation);
         collectorsToRun.push(collector);
       } catch (err) {
+        attemptedSourceIds.add(source.id);
         const stat = statsBySource.get(source.id);
         if (stat) {
           stat.error = err instanceof Error ? err.message : "Collector initialization failed.";
@@ -224,6 +227,7 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     const allCandidates: NormalizedCandidate[] = [];
 
     for (const result of collectorResults) {
+      attemptedSourceIds.add(result.sourceId);
       const stat = statsBySource.get(result.sourceId);
       if (stat) {
         stat.fetchedCount = result.candidateCount;
@@ -320,14 +324,9 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     // If all candidates are duplicates or filtered out, end early without calling AI
     if (candidatesToProcess.length === 0) {
       const totals = computeTotals(statsBySource, 0);
-      const hasErrors = Array.from(statsBySource.values()).some((s) => s.error !== null);
-      const status = hasErrors
-        ? collectorsToRun.length === 0
-          ? "failed"
-          : "partial"
-        : "succeeded";
+      const { status, errorMessage } = ingestionStatus(statsBySource.values(), attemptedSourceIds);
 
-      await finishJobRun(supabase, job.id, status, 0, statsBySource, totals, startTime);
+      await finishJobRun(supabase, job.id, status, 0, statsBySource, totals, startTime, errorMessage);
       return {
         jobId: job.id,
         status,
@@ -496,7 +495,6 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
 
     // 8c. Candidates about an event that already has a card become extra
     // sources of that story. No new story, no new summary.
-    let totalAttached = 0;
     for (const attachment of processingResult.attachments) {
       const links = attachment.candidates.flatMap((candidate) => {
         const rawItemId = rawItemsMap.get(candidate.canonicalUrl);
@@ -517,7 +515,6 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
         continue;
       }
       for (const { candidate } of links) {
-        totalAttached += 1;
         const stat = statsBySource.get(candidate.sourceId);
         if (stat) stat.attachedCount += 1;
       }
@@ -525,14 +522,18 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
 
     // 9. Finalize job_runs record
     const totals = computeTotals(statsBySource, totalStoriesCreated);
-    const hasSourceErrors = Array.from(statsBySource.values()).some((s) => s.error !== null);
-    const status = hasSourceErrors
-      ? totalStoriesCreated + totalAttached > 0
-        ? "partial"
-        : "failed"
-      : "succeeded";
+    const { status, errorMessage } = ingestionStatus(statsBySource.values(), attemptedSourceIds);
 
-    await finishJobRun(supabase, job.id, status, totalStoriesCreated, statsBySource, totals, startTime);
+    await finishJobRun(
+      supabase,
+      job.id,
+      status,
+      totalStoriesCreated,
+      statsBySource,
+      totals,
+      startTime,
+      errorMessage,
+    );
 
     return {
       jobId: job.id,
@@ -751,6 +752,29 @@ async function loadExistingStories(
     );
     return [];
   }
+}
+
+/**
+ * Job status from source outcomes alone. A run that creates no new stories is
+ * normal (nothing new passed the bar), so story counts play no part:
+ * - no attempted source failed → succeeded
+ * - some failed → partial
+ * - every attempted source failed → failed
+ * Sources skipped this run (rotated-out Reddit feeds) count as neither.
+ */
+export function ingestionStatus(
+  stats: Iterable<Pick<SourceIngestStats, "sourceId" | "sourceName" | "error">>,
+  attemptedSourceIds: ReadonlySet<string>,
+): { status: "succeeded" | "partial" | "failed"; errorMessage?: string } {
+  const failed = [...stats].filter((stat) => stat.error !== null);
+  if (failed.length === 0) return { status: "succeeded" };
+
+  const attempted = Math.max(attemptedSourceIds.size, failed.length);
+  const details = failed.map((stat) => `${stat.sourceName} (${stat.error})`).join("; ");
+  return {
+    status: failed.length >= attempted ? "failed" : "partial",
+    errorMessage: `${failed.length}/${attempted} sources failed: ${details}`.slice(0, 1_000),
+  };
 }
 
 /** Two-hour slot index, matching the ingestion schedule. */

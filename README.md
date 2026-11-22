@@ -11,7 +11,7 @@ Everything runs on free tiers with no payment method attached (see [DEPLOYMENT.m
 - Next.js 16, TypeScript, and App Router, deployed to Cloudflare Workers with `@opennextjs/cloudflare`
 - Tailwind CSS 4 with a shadcn/ui-compatible component structure
 - Supabase PostgreSQL, Auth, and SSR clients
-- Key-free collectors: RSS/Atom, Hacker News API, Reddit public RSS, YouTube channel RSS
+- Key-free collectors: RSS/Atom, Hacker News API, Reddit public RSS (sources disabled since 2026-11-22: Reddit blocks unauthenticated feeds), YouTube channel RSS
 - Google Gemini API (free AI Studio key) with batched structured JSON output and Zod validation
 - Deterministic topic-aware ranking, feedback adjustment, and first-layer deduplication
 - Database-backed For You, Saved, Read Later, and History views

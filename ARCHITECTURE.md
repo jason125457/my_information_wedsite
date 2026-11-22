@@ -120,6 +120,8 @@ interface Collector {
 
 使用 Reddit 官方提供的公開 RSS feed（`/r/<sub>/<listing>/.rss`），不需 OAuth 應用程式。多個 subreddit 以 multireddit（`r/a+b+c`）合併為一次請求。實測從 GitHub Actions 每輪只有第一個 Reddit 請求會成功，之後回應 429，因此**每輪只抓一個 Reddit 來源**，依兩小時時段輪替。抓取失敗只影響該來源。MVP 保存標題、permalink、發布時間、必要短 excerpt 與 derived AI metadata，不長期保存大量全文或 comments。
 
+> 2026-11-22：Reddit 自 2026-11-17 18:24 UTC 起不再對未登入的請求提供 RSS（CI 一律 404，家用網路也得到 403／404／429，`x-ratelimit-remaining: 0`）。依本文件不使用爬蟲繞過，也不建立 OAuth 應用程式，因此三個 Reddit 來源已以 migration `202611220001_disable_reddit_sources.sql` 停用（`is_active = false`，資料保留）。`reddit` collector 程式碼保留，Reddit 若恢復公開 feed，把來源重新啟用即可。
+
 ### YouTube
 
 使用 YouTube 官方的頻道 uploads feed（`/feeds/videos.xml?channel_id=`），不需 YouTube Data API key。不依賴 undocumented scraping。
@@ -313,6 +315,8 @@ MVP 使用 rule-based feedback 加 LLM ranking。Save 增加相似內容權重�
 - `items_processed integer not null default 0`
 - `error_message text null`
 - `metadata jsonb not null default '{}'`
+
+Ingestion 的 `status` 只看來源結果，不看新增幾則（某輪沒有內容通過門檻是正常情況）：沒有來源失敗為 `succeeded`；部分來源失敗為 `partial`；本輪嘗試的來源全部失敗（或發生例外）才是 `failed`，此時 GitHub Actions 該次執行會標為失敗。`partial`／`failed` 的 `error_message` 會寫出失敗來源，例如 `1/27 sources failed: The Verge (fetch failed)`。見 `ingestionStatus()`（`lib/pipeline/ingest.ts`）。
 
 ## 11. Application Routes
 

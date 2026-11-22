@@ -60,7 +60,7 @@ Avoid storing full copyrighted articles by default. Store metadata, URL, short e
 
 Prefer official APIs:
 
-- Reddit: official public RSS feeds (no OAuth app), fetched sequentially
+- Reddit: official public RSS feeds (no OAuth app), fetched sequentially. Disabled since 2026-11-22 because Reddit stopped serving these feeds to unauthenticated clients; see `ARCHITECTURE.md`.
 - Hacker News: official API
 - YouTube: official channel uploads feed (no API key)
 - Discovery: Google News search RSS and Hacker News Show HN (programmatic, no AI search)

@@ -171,7 +171,7 @@ MVP 採 Loose Filtering Mode，每天目標為 15～20 則，但不為達到數�
 MVP 支援：
 
 - RSS／Atom 與官方 Blog
-- Reddit 官方公開 RSS
+- Reddit 官方公開 RSS（2026-11-22 起停用：Reddit 不再對未登入請求提供 RSS）
 - Hacker News 官方 API
 - YouTube 官方頻道 RSS
 - 主流新聞與財經媒體的官方 RSS／API
