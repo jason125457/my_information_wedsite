@@ -8,7 +8,7 @@ export {
 } from "@/lib/pipeline/ingest";
 export { prefilterCandidates, type PrefilterResult } from "@/lib/pipeline/prefilter";
 export {
-  defaultTopicWeights,
+  NEUTRAL_TOPIC_WEIGHT,
   processCandidates,
   type ProcessingFailure,
   type ProcessingOptions,

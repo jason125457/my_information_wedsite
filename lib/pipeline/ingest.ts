@@ -355,12 +355,12 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
     const processingResult = await processCandidates(candidatesToProcess, editor, {
       now,
       minimumScore: options.minimumScore ?? 60,
-      maxCandidates: options.maxTotalCandidates ?? 150,
       maxStories: options.maxStories ?? DEFAULT_MAX_STORIES,
       maxPerTopic: options.maxPerTopic ?? DEFAULT_MAX_PER_TOPIC,
       maxPerSource: options.maxPerSource ?? DEFAULT_MAX_PER_SOURCE,
       existingStories,
-      feedbackFor: (candidate) => feedbackProfile.feedbackFor(candidate),
+      feedbackFor: (candidate, primaryTopic) =>
+        feedbackProfile.feedbackFor(candidate, primaryTopic),
       topicWeights: await loadTopicWeights(supabase, topicMap),
       fetchArticleText: (url) =>
         fetchArticleText(url, { fetchImplementation: options.fetchImplementation }),
@@ -651,7 +651,7 @@ export function createCollectorFromSource(
 /**
  * Topic weights from the owner's settings page (topic_preferences), falling
  * back to each topic's default weight. Single-user app: any profile's rows are
- * the owner's. Missing data leaves processCandidates on its built-in defaults.
+ * the owner's. A topic missing from the database falls back to a neutral weight.
  */
 async function loadTopicWeights(
   supabase: AdminClient,

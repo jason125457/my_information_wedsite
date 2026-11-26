@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { loadFeed } from "@/lib/feed/load-feed";
 import { loadDailyDigestStories } from "@/lib/digest/load";
-import { mapConcurrent } from "@/lib/pipeline/concurrency";
 import { processCandidates } from "@/lib/pipeline/process";
 import {
   buildFeedbackProfile,
@@ -448,27 +447,7 @@ describe("Historical Digest Decoupling", () => {
   });
 });
 
-describe("AI Pipeline Bounded Concurrency", () => {
-  it("mapConcurrent limits concurrency and preserves input order", async () => {
-    let activeWorkers = 0;
-    let peakConcurrency = 0;
-
-    const items = Array.from({ length: 15 }, (_, i) => i);
-    const concurrencyLimit = 3;
-
-    const results = await mapConcurrent(items, concurrencyLimit, async (item) => {
-      activeWorkers += 1;
-      peakConcurrency = Math.max(peakConcurrency, activeWorkers);
-      // simulate asynchronous work
-      await new Promise((resolve) => setTimeout(resolve, 15));
-      activeWorkers -= 1;
-      return item * 2;
-    });
-
-    expect(peakConcurrency).toBeLessThanOrEqual(concurrencyLimit);
-    expect(results).toEqual(items.map((i) => i * 2));
-  });
-
+describe("AI Pipeline Batching", () => {
   const batchClassification: Classification = {
     topics: ["technology"],
     interest_relevance: 4,
@@ -626,7 +605,7 @@ describe("Feedback Profile & Ranking Score Adjustments", () => {
       topic: "ai",
     });
 
-    const signals = neutral.feedbackFor(candidate);
+    const signals = neutral.feedbackFor(candidate, candidate.topic);
     expect(signals).toEqual({});
 
     const ranking = calculateRanking({
@@ -668,7 +647,7 @@ describe("Feedback Profile & Ranking Score Adjustments", () => {
       topic: "ai",
     });
 
-    const signals = profile.feedbackFor(candidate);
+    const signals = profile.feedbackFor(candidate, candidate.topic);
     expect(signals.savedSimilarCount).toBe(2);
     expect(signals.readSimilarCount).toBe(1);
 
@@ -718,7 +697,7 @@ describe("Feedback Profile & Ranking Score Adjustments", () => {
       topic: "finance",
     });
 
-    const signals = profile.feedbackFor(candidate);
+    const signals = profile.feedbackFor(candidate, candidate.topic);
     expect(signals.poorSourceCount).toBe(1);
     expect(signals.topicNotInterestingCount).toBe(1);
 
@@ -753,55 +732,37 @@ describe("Feedback Profile & Ranking Score Adjustments", () => {
       topic: "ai",
     });
 
-    const signals = profile.feedbackFor(candidate);
+    const signals = profile.feedbackFor(candidate, candidate.topic);
     expect(signals.savedSimilarCount).toBe(5);
     expect(signals.readSimilarCount).toBe(5);
   });
 
-  it("loadFeedbackProfile loads user profile safely from database", async () => {
-    const db: MockDatabase = {
-      profiles: [{ id: "profile-single", email: "jason@example.com" }],
-      topics: [
-        { id: "top-1", slug: "ai", name: "AI" },
-        { id: "top-2", slug: "music", name: "Music" },
-      ],
-      sources: [{ id: "src-1", name: "TechCrunch" }],
-      raw_items: [{ id: "raw-1", source_id: "src-1" }],
-      stories: [
-        {
-          id: "st-1",
-          title: "Story 1",
-          summary: "Summary",
-          why_recommended: "Why",
-          primary_topic_id: "top-1",
-          content_type: "current",
-          primary_url: "https://example.com/1",
-          published_at: null,
-          final_score: 80,
+  it("loadFeedbackProfile builds the profile from one nested, recent-only query", async () => {
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    const stateRows = [
+      {
+        is_saved: true,
+        is_read: true,
+        is_not_interested: false,
+        feedback_reason: null,
+        stories: {
+          topics: { slug: "ai" },
+          story_sources: [{ raw_items: { source_id: "src-1" } }],
         },
-      ],
-      story_sources: [{ story_id: "st-1", raw_item_id: "raw-1", is_primary: true }],
-      story_state: [
-        {
-          profile_id: "profile-single",
-          story_id: "st-1",
-          is_read: true,
-          is_saved: true,
-          is_read_later: false,
-          is_not_interested: false,
-          feedback_reason: null,
-          read_at: "2026-09-11T12:00:00Z",
-          saved_at: "2026-09-11T12:00:00Z",
-          read_later_at: null,
-          updated_at: "2026-09-11T12:00:00Z",
-        },
-      ],
-      digests: [],
-      digest_stories: [],
+      },
+    ];
+    const builder: Record<string, unknown> = {
+      select: (...args: unknown[]) => (calls.push({ method: "select", args }), builder),
+      eq: (...args: unknown[]) => (calls.push({ method: "eq", args }), builder),
+      gte: (...args: unknown[]) => (calls.push({ method: "gte", args }), builder),
+      maybeSingle: async () => ({ data: { id: "profile-single" }, error: null }),
+      then: (resolve: (value: unknown) => unknown) =>
+        Promise.resolve({ data: stateRows, error: null }).then(resolve),
     };
+    const client = { from: () => builder } as unknown as AdminClient;
+    const now = new Date("2026-11-26T00:00:00Z");
 
-    const client = createMockSupabase(db);
-    const profile = await loadFeedbackProfile(client as unknown as AdminClient);
+    const profile = await loadFeedbackProfile(client, { now });
 
     const candidate = createTestCandidate({
       sourceId: "src-1",
@@ -812,9 +773,13 @@ describe("Feedback Profile & Ranking Score Adjustments", () => {
       topic: "ai",
     });
 
-    const signals = profile.feedbackFor(candidate);
+    // Counted under the story's AI topic, not the candidate's source topic.
+    const signals = profile.feedbackFor(candidate, "ai");
     expect(signals.savedSimilarCount).toBe(1);
     expect(signals.readSimilarCount).toBe(1);
+    expect(profile.feedbackFor(candidate, "music")).toEqual({});
+    expect(calls).toContainEqual({ method: "gte", args: ["updated_at", "2026-08-28T00:00:00.000Z"] });
+    expect(calls).toContainEqual({ method: "eq", args: ["profile_id", "profile-single"] });
   });
 
   it("loadFeedbackProfile returns neutral profile when no profile exists in DB", async () => {
@@ -842,6 +807,6 @@ describe("Feedback Profile & Ranking Score Adjustments", () => {
       topic: "ai",
     });
 
-    expect(profile.feedbackFor(candidate)).toEqual({});
+    expect(profile.feedbackFor(candidate, candidate.topic)).toEqual({});
   });
 });

@@ -113,4 +113,9 @@ This builds with OpenNext and serves the Worker locally in `workerd`, the Cloudf
 
 ## Production configuration
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for Supabase, the Gemini key, GitHub Actions secrets, and Cloudflare Workers. See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md), [PRODUCT.md](./PRODUCT.md), and [ARCHITECTURE.md](./ARCHITECTURE.md) for the remaining work and constraints.
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for Supabase, the Gemini key, GitHub Actions secrets, and Cloudflare Workers. See [PRODUCT.md](./PRODUCT.md) and [ARCHITECTURE.md](./ARCHITECTURE.md) for behavior and constraints.
+
+## Next steps
+
+1. Tune after a few days of real data: sources, `minimumScore`, and the schedule versus the actual Gemini quota.
+2. Discovery: programmatic sources are live (Google News search RSS, Show HN); consider Gemini search grounding later if quota allows.

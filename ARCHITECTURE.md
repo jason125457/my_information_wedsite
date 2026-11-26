@@ -201,6 +201,8 @@ Structured output 最低欄位：
 
 MVP 使用 rule-based feedback 加 LLM ranking。Save 增加相似內容權重；Not Interested 依 topic、content type、technical depth、source style 與 keywords 調整。不建立客製 ML recommender。
 
+Feedback 只統計最近 90 天的互動（`story_state.updated_at`），以一次巢狀查詢取得 story 的 AI 主題（`stories.primary_topic_id`）與來源；排名時以候選項目的 AI 主要主題查詢，而非來源設定的主題。主題權重以資料庫（`topics.default_weight`、`topic_preferences`）為唯一來源，程式內僅保留中性預設值 3。
+
 ## 8. Event Deduplication
 
 第一層使用 canonical URL、external ID 與 normalized title similarity。第二層只將模糊候選交給 reasoning model 判斷是否為同一事件。
@@ -412,7 +414,9 @@ personal-feed/
 ├── AGENTS.md
 ├── PRODUCT.md
 ├── ARCHITECTURE.md
+├── DEPLOYMENT.md
 ├── README.md
+├── .github/workflows/        # ci.yml, deploy.yml, jobs.yml（排程）
 ├── app/
 │   ├── api/
 │   ├── digest/
@@ -421,6 +425,7 @@ personal-feed/
 │   ├── history/
 │   ├── settings/
 │   ├── topic/
+│   ├── weekly/
 │   └── page.tsx
 ├── components/
 │   ├── feed/
@@ -428,16 +433,27 @@ personal-feed/
 │   └── ui/
 ├── lib/
 │   ├── ai/
+│   ├── article/
+│   ├── auth/
 │   ├── collectors/
-│   ├── ranking/
 │   ├── dedupe/
+│   ├── digest/
+│   ├── feed/
+│   ├── jobs/
 │   ├── line/
+│   ├── pipeline/
+│   ├── ranking/
 │   ├── supabase/
-│   └── utils/
+│   └── weekly/
 ├── prompts/
+├── scheduler/                # Cloudflare Worker 排程觸發
+├── scripts/                  # GitHub Actions 執行的 job 腳本
 ├── supabase/migrations/
 ├── tests/
-├── vercel.json
+├── middleware.ts
+├── next.config.ts
+├── open-next.config.ts
+├── wrangler.jsonc
 ├── package.json
 └── .env.example
 ```
