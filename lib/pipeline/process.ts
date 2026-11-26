@@ -4,19 +4,15 @@ import type { StoryAIEditor } from "@/lib/ai/story-editor";
 import type { ContentTopic, NormalizedCandidate } from "@/lib/collectors/types";
 import { compareCandidates } from "@/lib/dedupe";
 import { calculateRanking, type FeedbackSignals, type RankingResult } from "@/lib/ranking";
-import { prefilterCandidates, type PrefilterRejection } from "@/lib/pipeline/prefilter";
 import { looksGarbled } from "@/lib/pipeline/garbled";
 import { completeClassification } from "@/lib/pipeline/signals";
 
-export const defaultTopicWeights: Record<ContentTopic, number> = {
-  ai: 5,
-  cybersecurity: 2,
-  technology: 4,
-  finance: 3,
-  world: 4,
-  music: 5,
-  photography: 4,
-};
+/**
+ * Topic weights come from the database (topics.default_weight, overridden by
+ * topic_preferences). Only a topic missing from the supplied map falls back to
+ * this neutral value.
+ */
+export const NEUTRAL_TOPIC_WEIGHT = 3;
 
 interface RankedCandidate {
   candidate: NormalizedCandidate;
@@ -62,7 +58,6 @@ export interface ProcessingResult {
   stories: StoryDraft[];
   /** Candidates merged into existing stories; never summarized or re-created. */
   attachments: StoryAttachment[];
-  prefilterRejected: PrefilterRejection[];
   belowThresholdCount: number;
   failures: ProcessingFailure[];
   /** Stories whose Chinese text still looks garbled after the one retry. */
@@ -71,10 +66,9 @@ export interface ProcessingResult {
 
 export interface ProcessingOptions {
   minimumScore?: number;
-  maxCandidates?: number;
   now?: Date;
   topicWeights?: Partial<Record<ContentTopic, number>>;
-  feedbackFor?: (candidate: NormalizedCandidate) => FeedbackSignals;
+  feedbackFor?: (candidate: NormalizedCandidate, primaryTopic: ContentTopic) => FeedbackSignals;
   /** Candidates per classification request (one Gemini call per batch). */
   classificationBatchSize?: number;
   /** Stories per summary request. */
@@ -103,7 +97,6 @@ export async function processCandidates(
   editor: StoryAIEditor,
   options: ProcessingOptions = {},
 ): Promise<ProcessingResult> {
-  const maximum = clampInteger(options.maxCandidates ?? 150, 1, 500);
   const minimumScore = clamp(options.minimumScore ?? 60, 0, 100);
   const classificationBatchSize = clampInteger(options.classificationBatchSize ?? 40, 1, 50);
   const summaryBatchSize = clampInteger(options.summaryBatchSize ?? 8, 1, 20);
@@ -112,13 +105,12 @@ export async function processCandidates(
   const maxPerSource = clampInteger(options.maxPerSource ?? DEFAULT_MAX_PER_SOURCE, 1, 200);
   const now = options.now ?? new Date();
 
-  const prefiltered = prefilterCandidates(candidates.slice(0, maximum), now);
   const failures: ProcessingFailure[] = [];
   const ranked: RankedCandidate[] = [];
   // Once the daily quota is gone every further call fails, so stop calling.
   let quotaError: GeminiDailyQuotaError | null = null;
 
-  for (const batch of chunk(prefiltered.accepted, classificationBatchSize)) {
+  for (const batch of chunk(candidates, classificationBatchSize)) {
     let judgements: Array<EditorialJudgement | null>;
     try {
       if (quotaError) throw quotaError;
@@ -140,8 +132,8 @@ export async function processCandidates(
       const ranking = calculateRanking({
         classification,
         primaryTopic,
-        topicWeight: options.topicWeights?.[primaryTopic] ?? defaultTopicWeights[primaryTopic],
-        feedback: options.feedbackFor?.(candidate),
+        topicWeight: options.topicWeights?.[primaryTopic] ?? NEUTRAL_TOPIC_WEIGHT,
+        feedback: options.feedbackFor?.(candidate, primaryTopic),
       });
       ranked.push({ candidate, classification, ranking });
     });
@@ -272,7 +264,6 @@ export async function processCandidates(
     attachments: existing
       .filter((group) => group.attached.length > 0)
       .map((group) => ({ storyId: group.storyId, candidates: group.attached })),
-    prefilterRejected: prefiltered.rejected,
     belowThresholdCount: ranked.length - aboveThreshold.length,
     failures,
     suspectedGarbledCount: suspectedGarbled.length,
