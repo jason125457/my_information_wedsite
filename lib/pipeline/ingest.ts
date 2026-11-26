@@ -533,6 +533,7 @@ export async function ingestSources(options: IngestOptions = {}): Promise<Ingest
       totals,
       startTime,
       errorMessage,
+      { suspectedGarbledCount: processingResult.suspectedGarbledCount },
     );
 
     return {
@@ -839,6 +840,7 @@ async function finishJobRun(
   totals: IngestionJobTotals,
   startTime: number,
   errorMessage?: string,
+  extraMetadata: Record<string, number> = {},
 ) {
   const durationMs = Date.now() - startTime;
   await supabase
@@ -852,6 +854,7 @@ async function finishJobRun(
         sources: Array.from(statsBySource.values()),
         totals,
         durationMs,
+        ...extraMetadata,
       } as unknown as Json,
     })
     .eq("id", jobId);
